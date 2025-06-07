@@ -12,51 +12,55 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-def download_imdb_datasets(datasets: List[str], download_path: str) -> List[str]:
+def download_to_gcs(datasets: List[str], bucket_name: str, prefix: str = 'imdb/') -> List[str]:
     """
-    Download IMDb datasets from the official source with resume capability.
+    Download IMDb datasets directly to GCS bucket.
     
     Args:
         datasets: List of dataset filenames to download
-        download_path: Local directory to save downloaded files
+        bucket_name: GCS bucket name
+        prefix: Prefix for objects in the bucket
         
     Returns:
-        List of paths to downloaded files
+        List of GCS paths where files were saved
     """
     BASE_URL = 'https://datasets.imdbws.com/'
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(bucket_name)
     
-    # Create download directory if it doesn't exist
-    os.makedirs(download_path, exist_ok=True)
-    
-    downloaded_files = []
+    uploaded_blobs = []
     for dataset in datasets:
         url = BASE_URL + dataset
-        local_path = os.path.join(download_path, dataset)
+        destination_blob_name = f"{prefix}{dataset}"
+        blob = bucket.blob(destination_blob_name)
         
-        # Check if file already exists and is complete
-        if os.path.exists(local_path):
-            try:
-                # Try to open and read the file to verify it's not corrupted
-                with gzip.open(local_path, 'rt', encoding='utf-8') as f:
-                    # Read a small portion to verify it's a valid gzip file
-                    f.read(1024)
-                print(f"File {dataset} already exists and appears valid, skipping download")
-                downloaded_files.append(local_path)
-                continue
-            except Exception as e:
-                print(f"Existing file {dataset} appears corrupt, re-downloading: {str(e)}")
-                # If verification fails, we'll re-download
+        # Check if blob already exists
+        if blob.exists():
+            print(f"File {destination_blob_name} already exists in bucket {bucket_name}")
+            uploaded_blobs.append(destination_blob_name)
+            continue
         
-        print(f"Downloading {dataset}...")
+        print(f"Downloading {dataset} to GCS...")
+        
+        # Stream the download directly to GCS
         response = requests.get(url, stream=True)
-        with open(local_path, 'wb') as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                f.write(chunk)
         
-        downloaded_files.append(local_path)
-        print(f"Downloaded {dataset} to {local_path}")
+        # Create a temporary file for streaming
+        with open(f"/tmp/{dataset}", 'wb') as temp_file:
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    temp_file.write(chunk)
+        
+        # Upload the temp file to GCS
+        blob.upload_from_filename(f"/tmp/{dataset}")
+        
+        # Clean up the temp file
+        os.remove(f"/tmp/{dataset}")
+        
+        print(f"Downloaded and uploaded {dataset} to {destination_blob_name}")
+        uploaded_blobs.append(destination_blob_name)
     
-    return downloaded_files
+    return uploaded_blobs
 
 def calculate_file_hash(file_path: str) -> str:
     """Calculate MD5 hash of a file."""
@@ -92,33 +96,49 @@ def get_file_metadata_from_gcs(bucket_name: str, blob_name: str) -> Dict[str, An
     
     return blob.metadata
 
-def check_dataset_changes(datasets: List[str], download_path: str, bucket_name: str, **context) -> Dict[str, bool]:
+def check_dataset_changes(datasets: List[str], bucket_name: str, prefix: str = 'imdb/', **context) -> Dict[str, bool]:
     """
-    Check if downloaded datasets have changed compared to versions in GCS.
+    Check if datasets in GCS have changed based on metadata.
     
     Args:
         datasets: List of dataset filenames
-        download_path: Path to downloaded files
         bucket_name: GCS bucket name
+        prefix: Prefix for objects in the bucket
         
     Returns:
         Dictionary with dataset names as keys and boolean change status as values
     """
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(bucket_name)
+    
     changes = {}
     
     for dataset in datasets:
-        local_path = os.path.join(download_path, dataset)
-        blob_name = f'imdb/{dataset}'
+        blob_name = f"{prefix}{dataset}"
+        blob = bucket.blob(blob_name)
         
-        # Calculate hash of downloaded file
-        current_hash = calculate_file_hash(local_path)
+        if not blob.exists():
+            changes[dataset] = True
+            continue
         
-        # Get metadata from GCS
-        metadata = get_file_metadata_from_gcs(bucket_name, blob_name)
+        # Get current MD5 hash from GCS metadata
+        blob.reload()  # Ensure we have the latest metadata
+        current_md5 = blob.md5_hash
+        
+        # Get previous MD5 hash from custom metadata if it exists
+        previous_md5 = None
+        if blob.metadata and 'previous_md5_hash' in blob.metadata:
+            previous_md5 = blob.metadata['previous_md5_hash']
         
         # Check if file has changed
-        if metadata is None or 'md5_hash' not in metadata or metadata['md5_hash'] != current_hash:
+        if previous_md5 is None or current_md5 != previous_md5:
             changes[dataset] = True
+            
+            # Update metadata with current hash
+            if not blob.metadata:
+                blob.metadata = {}
+            blob.metadata['previous_md5_hash'] = current_md5
+            blob.patch()
         else:
             changes[dataset] = False
     
@@ -137,13 +157,14 @@ def count_records_in_gz_tsv(file_path: str) -> int:
             count += 1
     return count
 
-def extract_metadata(datasets: List[str], download_path: str, **context) -> List[Dict[str, Any]]:
+def extract_metadata(datasets: List[str], bucket_name: str, prefix: str = 'imdb/', **context) -> List[Dict[str, Any]]:
     """
-    Extract metadata from downloaded datasets.
+    Extract metadata from datasets in GCS.
     
     Args:
         datasets: List of dataset filenames
-        download_path: Path to downloaded files
+        bucket_name: GCS bucket name
+        prefix: Prefix for objects in the bucket
         
     Returns:
         List of dictionaries with metadata for each dataset
@@ -151,21 +172,36 @@ def extract_metadata(datasets: List[str], download_path: str, **context) -> List
     # Get change status from previous task
     changes = context['ti'].xcom_pull(task_ids='check_dataset_changes', key='dataset_changes')
     
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(bucket_name)
+    
     metadata_list = []
     
     for dataset in datasets:
-        local_path = os.path.join(download_path, dataset)
+        blob_name = f"{prefix}{dataset}"
+        blob = bucket.blob(blob_name)
         
-        # Get file size
-        file_size = os.path.getsize(local_path)
+        if not blob.exists():
+            print(f"Warning: Blob {blob_name} does not exist in bucket {bucket_name}")
+            continue
         
-        # Calculate hash
-        file_hash = calculate_file_hash(local_path)
+        # Get file size and md5 hash
+        blob.reload()
+        file_size = blob.size
+        file_hash = blob.md5_hash
         
-        # Count records (only if file has changed to save processing time)
+        # Count records if needed (this requires downloading the file temporarily)
         record_count = 0
         if changes.get(dataset, True):  # Default to True if not in changes dict
-            record_count = count_records_in_gz_tsv(local_path)
+            # Download to temp file
+            temp_file = f"/tmp/{dataset}_temp"
+            blob.download_to_filename(temp_file)
+            
+            # Count records
+            record_count = count_records_in_gz_tsv(temp_file)
+            
+            # Clean up
+            os.remove(temp_file)
         
         metadata = {
             'name': dataset,
