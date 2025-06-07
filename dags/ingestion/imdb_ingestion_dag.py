@@ -32,9 +32,15 @@ PROCESSED_DATA_BUCKET = os.getenv('PROCESSED_DATA_BUCKET')
 ARCHIVE_DATA_BUCKET = os.getenv('ARCHIVE_DATA_BUCKET')
 PROJECT_ID = os.getenv('GCP_PROJECT_ID')
 BIGQUERY_DATASET = os.getenv('BIGQUERY_DATASET')
-DATASETS = os.getenv('IMDB_DATASETS', 'title.basics.tsv.gz,title.ratings.tsv.gz,title.crew.tsv.gz,title.episode.tsv.gz,title.principals.tsv.gz,title.akas.tsv.gz,name.basics.tsv.gz')
-
-DATASETS = [d.strip() for d in DATASETS.split(',') if d.strip() and d.strip() not in ['.', '..']]
+DATASETS = [
+    'title.basics.tsv.gz',
+    'title.ratings.tsv.gz',
+    'title.crew.tsv.gz',
+    'title.episode.tsv.gz',
+    'title.principals.tsv.gz',
+    'title.akas.tsv.gz',
+    'name.basics.tsv.gz'
+]
 
 with DAG(
     'imdb_data_ingestion',
