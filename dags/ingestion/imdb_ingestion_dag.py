@@ -33,14 +33,16 @@ ARCHIVE_DATA_BUCKET = os.getenv('ARCHIVE_DATA_BUCKET')
 PROJECT_ID = os.getenv('GCP_PROJECT_ID')
 BIGQUERY_DATASET = os.getenv('BIGQUERY_DATASET')
 DATASETS = [
+    'name.basics.tsv.gz',
+    'title.akas.tsv.gz',
     'title.basics.tsv.gz',
-    'title.ratings.tsv.gz',
     'title.crew.tsv.gz',
     'title.episode.tsv.gz',
     'title.principals.tsv.gz',
-    'title.akas.tsv.gz',
-    'name.basics.tsv.gz'
+    'title.ratings.tsv.gz'
 ]
+
+print(f"Using datasets: {DATASETS}")
 
 with DAG(
     'imdb_data_ingestion',
@@ -57,11 +59,11 @@ with DAG(
         task_id='download_imdb_datasets',
         python_callable=download_to_gcs,
         op_kwargs={
-            'datasets': DATASETS,
+            'datasets': DATASETS,  # Use our explicit list
             'bucket_name': RAW_DATA_BUCKET,
             'prefix': 'imdb/'
         },
-        execution_timeout=timedelta(hours=1)  # Extended timeout
+        execution_timeout=timedelta(hours=2)
     )
    
     # Task 2: Check for dataset changes
