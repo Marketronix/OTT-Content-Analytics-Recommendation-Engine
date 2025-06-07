@@ -24,8 +24,7 @@ default_args = {
     'retries': 3,  # Increased retries
     'retry_delay': timedelta(minutes=15),
     'retry_exponential_backoff': True,
-    'max_retry_delay': timedelta(minutes=60)  # Cap retry delay
-}
+    }
 
 # Define constants from environment variables with defaults
 RAW_DATA_BUCKET = os.getenv('RAW_DATA_BUCKET')
