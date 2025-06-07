@@ -14,7 +14,7 @@ load_dotenv()
 # Import helper functions
 import sys
 sys.path.append('/home/airflow/gcs/dags')
-from ingestion.helpers import download_imdb_datasets, check_dataset_changes, extract_metadata
+from ingestion.helpers import download_imdb_datasets, check_dataset_changes, extract_metadata, verify_downloads
 
 # Define default arguments
 default_args = {
@@ -23,8 +23,9 @@ default_args = {
     'email_on_failure': False,
     'email_on_retry': False,
     'retries': 1,
-    'retry_delay': timedelta(minutes=5),
-}
+    'retry_delay': timedelta(minutes=15),
+    'retry_exponential_backoff': True,  # Use exponential backoff
+    }
 
 # Define constants from environment variables
 RAW_DATA_BUCKET = os.getenv('RAW_DATA_BUCKET')
@@ -33,7 +34,7 @@ ARCHIVE_DATA_BUCKET = os.getenv('ARCHIVE_DATA_BUCKET')
 PROJECT_ID = os.getenv('GCP_PROJECT_ID')
 BIGQUERY_DATASET = os.getenv('BIGQUERY_DATASET')
 DATASETS = os.getenv('IMDB_DATASETS').split(',')
-TEMP_DOWNLOAD_PATH = '/tmp/imdb_data'
+TEMP_DOWNLOAD_PATH = '/home/airflow/gcs/data/tmp_imdb'
 
 with DAG(
     'imdb_data_ingestion',
@@ -49,6 +50,17 @@ with DAG(
     download_datasets = PythonOperator(
         task_id='download_imdb_datasets',
         python_callable=download_imdb_datasets,
+        op_kwargs={
+            'datasets': DATASETS,
+            'download_path': TEMP_DOWNLOAD_PATH
+        },
+        execution_timeout=timedelta(seconds=1800)
+    )
+
+    # 
+    verify_downloads_task = PythonOperator(
+        task_id='verify_downloads',
+        python_callable=verify_downloads,
         op_kwargs={
             'datasets': DATASETS,
             'download_path': TEMP_DOWNLOAD_PATH
@@ -122,7 +134,7 @@ with DAG(
 )
     
     # Define the task dependencies
-    download_datasets >> check_changes >> extract_dataset_metadata
+    download_datasets >> verify_downloads_task >> check_changes >> extract_dataset_metadata
     
     # Add dynamic upload task dependencies
     for upload_task in upload_tasks:

@@ -14,7 +14,7 @@ load_dotenv()
 
 def download_imdb_datasets(datasets: List[str], download_path: str) -> List[str]:
     """
-    Download IMDb datasets from the official source.
+    Download IMDb datasets from the official source with resume capability.
     
     Args:
         datasets: List of dataset filenames to download
@@ -32,6 +32,20 @@ def download_imdb_datasets(datasets: List[str], download_path: str) -> List[str]
     for dataset in datasets:
         url = BASE_URL + dataset
         local_path = os.path.join(download_path, dataset)
+        
+        # Check if file already exists and is complete
+        if os.path.exists(local_path):
+            try:
+                # Try to open and read the file to verify it's not corrupted
+                with gzip.open(local_path, 'rt', encoding='utf-8') as f:
+                    # Read a small portion to verify it's a valid gzip file
+                    f.read(1024)
+                print(f"File {dataset} already exists and appears valid, skipping download")
+                downloaded_files.append(local_path)
+                continue
+            except Exception as e:
+                print(f"Existing file {dataset} appears corrupt, re-downloading: {str(e)}")
+                # If verification fails, we'll re-download
         
         print(f"Downloading {dataset}...")
         response = requests.get(url, stream=True)
@@ -52,6 +66,20 @@ def calculate_file_hash(file_path: str) -> str:
         for chunk in iter(lambda: f.read(4096), b''):
             md5_hash.update(chunk)
     return md5_hash.hexdigest()
+
+def verify_downloads(datasets: List[str], download_path: str) -> bool:
+    """Verify that downloaded files are valid gzip files."""
+    for dataset in datasets:
+        local_path = os.path.join(download_path, dataset)
+        try:
+            with gzip.open(local_path, 'rt', encoding='utf-8') as f:
+                # Read header and first line to verify file is valid
+                header = next(f)
+                first_line = next(f)
+            print(f"Verified {dataset} is valid")
+        except Exception as e:
+            raise ValueError(f"File {dataset} is invalid or corrupt: {str(e)}")
+    return True
 
 def get_file_metadata_from_gcs(bucket_name: str, blob_name: str) -> Dict[str, Any]:
     """Get metadata for a file in GCS."""
