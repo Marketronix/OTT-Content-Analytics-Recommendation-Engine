@@ -5,7 +5,7 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.providers.google.cloud.transfers.local_to_gcs import LocalFilesystemToGCSOperator
 from airflow.utils.trigger_rule import TriggerRule
-from airflow.providers.google.cloud.operators.bigquery import BigQueryExecuteQueryOperator
+from airflow.providers.google.cloud.operators.bigquery import BigQueryInsertJobOperator
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -92,29 +92,34 @@ with DAG(
         upload_tasks.append(upload_to_gcs)
     
     # Task to log ingestion metadata to BigQuery
-    log_ingestion_metadata = BigQueryExecuteQueryOperator(
-        task_id='log_ingestion_metadata',
-        sql="""
-        INSERT INTO `{{ params.project_id }}.{{ params.dataset }}.ingestion_log`
-        (dataset_name, ingestion_date, file_size_bytes, record_count, md5_hash, has_changed)
-        VALUES
-        {% for dataset in task_instance.xcom_pull(task_ids='extract_dataset_metadata') %}
-        ('{{ dataset.name }}', 
-         CURRENT_TIMESTAMP(), 
-         {{ dataset.size }}, 
-         {{ dataset.records }}, 
-         '{{ dataset.hash }}', 
-         {{ dataset.changed|lower }})
-         {% if not loop.last %},{% endif %}
-        {% endfor %}
-        """,
-        use_legacy_sql=False,
-        gcp_conn_id='google_cloud_default',
-        params={
-            'project_id': PROJECT_ID,
-            'dataset': BIGQUERY_DATASET
+    log_ingestion_metadata = BigQueryInsertJobOperator(
+    task_id='log_ingestion_metadata',
+    configuration={
+        'query': {
+            'query': """
+            INSERT INTO `{{ params.project_id }}.{{ params.dataset }}.ingestion_log`
+            (dataset_name, ingestion_date, file_size_bytes, record_count, md5_hash, has_changed)
+            VALUES
+            {% for dataset in task_instance.xcom_pull(task_ids='extract_dataset_metadata') %}
+            ('{{ dataset.name }}', 
+             CURRENT_TIMESTAMP(), 
+             {{ dataset.size }}, 
+             {{ dataset.records }}, 
+             '{{ dataset.hash }}', 
+             {{ dataset.changed|lower }})
+             {% if not loop.last %},{% endif %}
+            {% endfor %}
+            """,
+            'useLegacySql': False,
+            'priority': 'BATCH',
         }
-    )
+    },
+    gcp_conn_id='google_cloud_default',
+    params={
+        'project_id': PROJECT_ID,
+        'dataset': 'ott-analytics-engine'
+    }
+)
     
     # Define the task dependencies
     download_datasets >> check_changes >> extract_dataset_metadata
