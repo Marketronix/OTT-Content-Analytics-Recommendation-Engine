@@ -32,11 +32,15 @@ jobs:
         echo "IMDB_DATASETS=${{ secrets.IMDB_DATASETS }}" >> .env
         echo "BIGQUERY_DATASET=${{ secrets.BIGQUERY_DATASET }}" >> .env
     
+    - name: Setup GCP Credentials
+      run: |
+        echo '${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}' > /tmp/gcp-credentials.json
+        echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-credentials.json" >> $GITHUB_ENV
+    
     - name: Deploy DAGs to Composer
       env:
         GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
         GCP_COMPOSER_BUCKET: ${{ secrets.GCP_COMPOSER_BUCKET }}
-        GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}
       run: |
         # This is a placeholder for the actual deployment script
         python scripts/deploy_dags_to_composer.py
