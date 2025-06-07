@@ -21,7 +21,16 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install google-cloud-storage
+        pip install google-cloud-storage python-dotenv
+    
+    - name: Create .env file
+      run: |
+        echo "GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}" > .env
+        echo "RAW_DATA_BUCKET=${{ secrets.RAW_DATA_BUCKET }}" >> .env
+        echo "PROCESSED_DATA_BUCKET=${{ secrets.PROCESSED_DATA_BUCKET }}" >> .env
+        echo "ARCHIVE_DATA_BUCKET=${{ secrets.ARCHIVE_DATA_BUCKET }}" >> .env
+        echo "IMDB_DATASETS=${{ secrets.IMDB_DATASETS }}" >> .env
+        echo "BIGQUERY_DATASET=${{ secrets.BIGQUERY_DATASET }}" >> .env
     
     - name: Deploy DAGs to Composer
       env:
@@ -30,5 +39,4 @@ jobs:
         GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}
       run: |
         # This is a placeholder for the actual deployment script
-        # You'll need to implement the logic to copy DAGs to your Composer bucket
         python scripts/deploy_dags_to_composer.py

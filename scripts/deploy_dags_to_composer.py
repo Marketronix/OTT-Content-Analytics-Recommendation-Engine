@@ -1,11 +1,15 @@
 # scripts/deploy_dags_to_composer.py
 import os
 from google.cloud import storage
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 def deploy_dags_to_composer():
     """Deploy DAGs to the Cloud Composer environment."""
-    project_id = os.environ.get('GCP_PROJECT_ID')
-    composer_bucket = os.environ.get('GCP_COMPOSER_BUCKET')
+    project_id = os.getenv('GCP_PROJECT_ID')
+    composer_bucket = os.getenv('GCP_COMPOSER_BUCKET')
     
     if not project_id or not composer_bucket:
         raise ValueError("Missing required environment variables")
