@@ -20,13 +20,15 @@ def download_to_gcs(datasets: List[str], bucket_name: str, prefix: str = 'imdb/'
     storage_client = storage.Client()
     bucket = storage_client.bucket(bucket_name)
     
+    print(f"Processing datasets: {datasets}")
+    
     uploaded_blobs = []
     for dataset in datasets:
-        # Safety check - skip invalid dataset names
+        # Skip any invalid dataset names
         if not dataset or dataset == '.' or dataset == '..':
             print(f"Skipping invalid dataset name: '{dataset}'")
             continue
-            
+        
         url = BASE_URL + dataset
         destination_blob_name = f"{prefix}{dataset}"
         blob = bucket.blob(destination_blob_name)
@@ -44,7 +46,7 @@ def download_to_gcs(datasets: List[str], bucket_name: str, prefix: str = 'imdb/'
             response = requests.get(url, stream=True)
             
             # Create a temporary file with a safe name
-            safe_filename = dataset.replace('/', '_').replace('.', '_')
+            safe_filename = dataset.replace('/', '_')
             temp_file_path = f"/tmp/imdb_{safe_filename}"
             
             with open(temp_file_path, 'wb') as temp_file:
