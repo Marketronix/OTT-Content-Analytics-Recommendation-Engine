@@ -22,7 +22,7 @@ def download_to_gcs(datasets: List[str], bucket_name: str, prefix: str = 'imdb/'
     
     uploaded_blobs = []
     for dataset in datasets:
-        # Skip empty or invalid dataset names
+        # Safety check - skip invalid dataset names
         if not dataset or dataset == '.' or dataset == '..':
             print(f"Skipping invalid dataset name: '{dataset}'")
             continue
@@ -43,8 +43,10 @@ def download_to_gcs(datasets: List[str], bucket_name: str, prefix: str = 'imdb/'
             # Stream the download directly to GCS
             response = requests.get(url, stream=True)
             
-            # Create a temporary file for streaming
-            temp_file_path = f"/tmp/imdb_{dataset.replace('/', '_')}"
+            # Create a temporary file with a safe name
+            safe_filename = dataset.replace('/', '_').replace('.', '_')
+            temp_file_path = f"/tmp/imdb_{safe_filename}"
+            
             with open(temp_file_path, 'wb') as temp_file:
                 for chunk in response.iter_content(chunk_size=8192):
                     if chunk:
