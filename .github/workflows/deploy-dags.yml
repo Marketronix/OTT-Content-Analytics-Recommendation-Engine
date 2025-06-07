@@ -42,5 +42,5 @@ jobs:
         GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
         GCP_COMPOSER_BUCKET: ${{ secrets.GCP_COMPOSER_BUCKET }}
       run: |
-        # This is a placeholder for the actual deployment script
+        # This is a placeholder for the actual deployment script.
         python scripts/deploy_dags_to_composer.py
