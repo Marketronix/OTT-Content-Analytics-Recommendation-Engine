@@ -15,14 +15,6 @@ load_dotenv()
 def download_to_gcs(datasets: List[str], bucket_name: str, prefix: str = 'imdb/') -> List[str]:
     """
     Download IMDb datasets directly to GCS bucket.
-    
-    Args:
-        datasets: List of dataset filenames to download
-        bucket_name: GCS bucket name
-        prefix: Prefix for objects in the bucket
-        
-    Returns:
-        List of GCS paths where files were saved
     """
     BASE_URL = 'https://datasets.imdbws.com/'
     storage_client = storage.Client()
@@ -30,6 +22,11 @@ def download_to_gcs(datasets: List[str], bucket_name: str, prefix: str = 'imdb/'
     
     uploaded_blobs = []
     for dataset in datasets:
+        # Skip empty or invalid dataset names
+        if not dataset or dataset == '.' or dataset == '..':
+            print(f"Skipping invalid dataset name: '{dataset}'")
+            continue
+            
         url = BASE_URL + dataset
         destination_blob_name = f"{prefix}{dataset}"
         blob = bucket.blob(destination_blob_name)
@@ -42,23 +39,28 @@ def download_to_gcs(datasets: List[str], bucket_name: str, prefix: str = 'imdb/'
         
         print(f"Downloading {dataset} to GCS...")
         
-        # Stream the download directly to GCS
-        response = requests.get(url, stream=True)
-        
-        # Create a temporary file for streaming
-        with open(f"/tmp/{dataset}", 'wb') as temp_file:
-            for chunk in response.iter_content(chunk_size=8192):
-                if chunk:
-                    temp_file.write(chunk)
-        
-        # Upload the temp file to GCS
-        blob.upload_from_filename(f"/tmp/{dataset}")
-        
-        # Clean up the temp file
-        os.remove(f"/tmp/{dataset}")
-        
-        print(f"Downloaded and uploaded {dataset} to {destination_blob_name}")
-        uploaded_blobs.append(destination_blob_name)
+        try:
+            # Stream the download directly to GCS
+            response = requests.get(url, stream=True)
+            
+            # Create a temporary file for streaming
+            temp_file_path = f"/tmp/imdb_{dataset.replace('/', '_')}"
+            with open(temp_file_path, 'wb') as temp_file:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        temp_file.write(chunk)
+            
+            # Upload the temp file to GCS
+            blob.upload_from_filename(temp_file_path)
+            
+            # Clean up the temp file
+            os.remove(temp_file_path)
+            
+            print(f"Downloaded and uploaded {dataset} to {destination_blob_name}")
+            uploaded_blobs.append(destination_blob_name)
+        except Exception as e:
+            print(f"Error processing {dataset}: {str(e)}")
+            # Continue with next file instead of failing the whole task
     
     return uploaded_blobs
 
