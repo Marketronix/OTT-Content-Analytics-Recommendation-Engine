@@ -91,7 +91,6 @@ with DAG(
                 ('{{ dataset.name }}', 
                  CURRENT_TIMESTAMP(), 
                  {{ dataset.size }}, 
-                 {{ dataset.records }}, 
                  '{{ dataset.hash }}', 
                  {{ dataset.changed|lower }})
                  {% if not loop.last %},{% endif %}
