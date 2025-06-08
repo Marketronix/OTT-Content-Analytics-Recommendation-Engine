@@ -5,7 +5,7 @@ from airflow import DAG
 from airflow.providers.google.cloud.operators.dataproc import (
     DataprocCreateClusterOperator,
     DataprocDeleteClusterOperator,
-    DataprocSubmitPySparkJobOperator,
+    DataprocSubmitJobOperator,
 )
 from airflow.providers.google.cloud.sensors.gcs import GCSObjectsWithPrefixExistenceSensor
 from airflow.operators.python import PythonOperator
@@ -84,7 +84,7 @@ with DAG(
         bucket=RAW_BUCKET,
         prefix='IMDB/',
         google_cloud_conn_id='google_cloud_default',
-        poke_interval=120,  # check every minute
+        poke_interval=120,  # check every 2 minutes
         timeout=600,  # timeout after 10 minutes
     )
 
@@ -111,18 +111,27 @@ with DAG(
     # Create PySpark job tasks for each table
     transform_tasks = []
     for table in TABLES:
-        transform_task = DataprocSubmitPySparkJobOperator(
+        # Create a PySpark job configuration
+        pyspark_job = {
+            "reference": {"project_id": PROJECT_ID},
+            "placement": {"cluster_name": CLUSTER_NAME},
+            "pyspark_job": {
+                "main_python_file_uri": f"gs://{PYSPARK_SCRIPTS_BUCKET}/transform_{table}.py",
+                "args": [
+                    f"--project_id={PROJECT_ID}",
+                    f"--input_file=gs://{RAW_BUCKET}/IMDB/{table}.tsv",
+                    f"--output_table={BQ_DATASET}.{table}",
+                    f"--temp_bucket={TEMP_BUCKET}"
+                ],
+                "jar_file_uris": ["gs://spark-lib/bigquery/spark-bigquery-latest_2.12.jar"]
+            }
+        }
+        
+        transform_task = DataprocSubmitJobOperator(
             task_id=f'transform_{table}',
-            main=f'gs://{PYSPARK_SCRIPTS_BUCKET}/transform_{table}.py',
-            arguments=[
-                f'--project_id={PROJECT_ID}',
-                f'--input_file=gs://{RAW_BUCKET}/IMDB/{table}.tsv',
-                f'--output_table={BQ_DATASET}.{table}',
-                f'--temp_bucket={TEMP_BUCKET}'
-            ],
-            cluster_name=CLUSTER_NAME,
+            job=pyspark_job,
             region=REGION,
-            dataproc_jars=['gs://spark-lib/bigquery/spark-bigquery-latest_2.12.jar'],
+            project_id=PROJECT_ID,
             gcp_conn_id='google_cloud_default',
         )
         transform_tasks.append(transform_task)
