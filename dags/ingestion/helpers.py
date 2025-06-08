@@ -75,22 +75,42 @@ def extract_metadata(datasets: List[str], bucket_name: str, prefix: str = 'IMDB/
         file_size = blob.size
         file_hash = blob.md5_hash
         
+        print(f"Processing {blob_name} - size: {file_size} bytes")
+        
         # Count records if needed (streaming mode)
         record_count = 0
         if changes.get(dataset, True):  # Default to True if not in changes dict
             try:
+                print(f"Starting record count for {dataset}...")
                 # Stream GZIP file directly from GCS
                 with blob.open("rb") as blob_stream:
+                    print(f"Opened blob stream for {dataset}")
                     with gzip.GzipFile(fileobj=blob_stream) as gzip_stream:
+                        print(f"Opened gzip stream for {dataset}")
                         with io.TextIOWrapper(gzip_stream, encoding='utf-8') as text_stream:
+                            print(f"Opened text stream for {dataset}")
                             # Skip header
-                            next(text_stream, None)
-                            # Count records (skip blank lines)
-                            record_count = sum(1 for line in text_stream if line.strip())
+                            header = next(text_stream, None)
+                            print(f"Header (first 100 chars): {header[:100] if header else 'None'}")
+                            
+                            # Count records with progress reporting
+                            line_count = 0
+                            for line in text_stream:
+                                if line.strip():  # Skip blank lines
+                                    line_count += 1
+                                    if line_count % 1000000 == 0:
+                                        print(f"Counted {line_count} lines in {dataset} so far...")
+                            
+                            record_count = line_count
+                            print(f"Final record count for {dataset}: {record_count}")
 
             except Exception as e:
                 print(f"Error counting records in {dataset}: {str(e)}")
+                import traceback
+                traceback.print_exc()
                 record_count = -1  # Indicate error
+        else:
+            print(f"Skipping record count for {dataset} as it hasn't changed")
         
         metadata = {
             'name': dataset,
@@ -100,6 +120,7 @@ def extract_metadata(datasets: List[str], bucket_name: str, prefix: str = 'IMDB/
             'changed': changes.get(dataset, True)
         }
         
+        print(f"Metadata for {dataset}: {metadata}")
         metadata_list.append(metadata)
     
     return metadata_list
