@@ -19,7 +19,7 @@ def create_ingestion_log_table():
         bigquery.SchemaField("has_changed", "BOOLEAN", mode="REQUIRED"),
     ]
     
-    table_id = f"{os.getenv('GCP_PROJECT_ID')}.{os.getenv('BIGQUERY_DATASET')}.ingestion_log"
+    table_id = f"{os.getenv('BIGQUERY_DATASET_ID')}.ingestion_log"
     
     table = bigquery.Table(table_id, schema=schema)
     table.time_partitioning = bigquery.TimePartitioning(
