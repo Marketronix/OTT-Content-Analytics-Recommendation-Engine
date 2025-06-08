@@ -111,6 +111,7 @@ with DAG(
     # Create PySpark job tasks for each table
     transform_tasks = []
     for table in TABLES:
+        file_name = table.replace('_', '.') + '.tsv'
         # Create a PySpark job configuration
         pyspark_job = {
             "reference": {"project_id": PROJECT_ID},
@@ -119,7 +120,7 @@ with DAG(
                 "main_python_file_uri": f"gs://{PYSPARK_SCRIPTS_BUCKET}/transform_{table}.py",
                 "args": [
                     f"--project_id={PROJECT_ID}",
-                    f"--input_file=gs://{RAW_BUCKET}/IMDB/{table}.tsv",
+                    f"--input_file=gs://{RAW_BUCKET}/IMDB/{file_name}",
                     f"--output_table={BQ_DATASET}.{table}",
                     f"--temp_bucket={TEMP_BUCKET}"
                 ],
