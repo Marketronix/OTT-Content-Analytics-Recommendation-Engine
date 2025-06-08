@@ -85,7 +85,7 @@ with DAG(
             'query': {
                 'query': """
                 INSERT INTO `{{ params.project_id }}.{{ params.dataset }}.ingestion_log`
-                (dataset_name, ingestion_date, file_size_bytes, record_count, md5_hash, has_changed)
+                (dataset_name, ingestion_date, file_size_bytes, md5_hash, has_changed)
                 VALUES
                 {% for dataset in task_instance.xcom_pull(task_ids='extract_dataset_metadata') %}
                 ('{{ dataset.name }}', 
