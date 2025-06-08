@@ -5,7 +5,7 @@ from airflow import DAG
 from airflow.providers.google.cloud.operators.dataproc import (
     DataprocCreateClusterOperator,
     DataprocDeleteClusterOperator,
-    DataprocSubmitJobOperator,
+    DataprocSubmitPySparkJobOperator,
 )
 from airflow.providers.google.cloud.sensors.gcs import GCSObjectsWithPrefixExistenceSensor
 from airflow.operators.python import PythonOperator
@@ -111,7 +111,7 @@ with DAG(
     # Create PySpark job tasks for each table
     transform_tasks = []
     for table in TABLES:
-        transform_task = DataprocSubmitJobOperator(
+        transform_task = DataprocSubmitPySparkJobOperator(
             task_id=f'transform_{table}',
             main=f'gs://{PYSPARK_SCRIPTS_BUCKET}/transform_{table}.py',
             arguments=[
