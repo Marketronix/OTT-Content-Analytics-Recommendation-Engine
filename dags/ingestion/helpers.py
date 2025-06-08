@@ -85,8 +85,9 @@ def extract_metadata(datasets: List[str], bucket_name: str, prefix: str = 'IMDB/
                         with io.TextIOWrapper(gzip_stream, encoding='utf-8') as text_stream:
                             # Skip header
                             next(text_stream, None)
-                            # Count records
-                            record_count = sum(1 for _ in text_stream)
+                            # Count records (skip blank lines)
+                            record_count = sum(1 for line in text_stream if line.strip())
+
             except Exception as e:
                 print(f"Error counting records in {dataset}: {str(e)}")
                 record_count = -1  # Indicate error
