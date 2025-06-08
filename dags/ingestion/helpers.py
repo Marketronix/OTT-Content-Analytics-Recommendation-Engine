@@ -1,10 +1,11 @@
 # dags/ingestion/helpers.py
 import os
 import gzip
+import io
 from typing import List, Dict, Any
 from google.cloud import storage
 
-def check_dataset_changes(datasets: List[str], bucket_name: str, prefix: str = 'imdb/', **context) -> Dict[str, bool]:
+def check_dataset_changes(datasets: List[str], bucket_name: str, prefix: str = 'IMDB/', **context) -> Dict[str, bool]:
     """
     Check if datasets in GCS have changed based on metadata.
     """
@@ -48,9 +49,10 @@ def check_dataset_changes(datasets: List[str], bucket_name: str, prefix: str = '
     
     return changes
 
-def extract_metadata(datasets: List[str], bucket_name: str, prefix: str = 'imdb/', **context) -> List[Dict[str, Any]]:
+def extract_metadata(datasets: List[str], bucket_name: str, prefix: str = 'IMDB/', **context) -> List[Dict[str, Any]]:
     """
     Extract metadata from datasets in GCS.
+    Streaming version → no /tmp/ file usage.
     """
     # Get change status from previous task
     changes = context['ti'].xcom_pull(task_ids='check_dataset_changes', key='dataset_changes')
@@ -73,22 +75,18 @@ def extract_metadata(datasets: List[str], bucket_name: str, prefix: str = 'imdb/
         file_size = blob.size
         file_hash = blob.md5_hash
         
-        # Count records if needed (this requires downloading the file temporarily)
+        # Count records if needed (streaming mode)
         record_count = 0
         if changes.get(dataset, True):  # Default to True if not in changes dict
             try:
-                # Download to temp file
-                temp_file = f"/tmp/{dataset}"
-                blob.download_to_filename(temp_file)
-                
-                # Count records
-                with gzip.open(temp_file, 'rt', encoding='utf-8') as f:
-                    # Skip header
-                    next(f, None)
-                    record_count = sum(1 for _ in f)
-                
-                # Clean up
-                os.remove(temp_file)
+                # Stream GZIP file directly from GCS
+                with blob.open("rb") as blob_stream:
+                    with gzip.GzipFile(fileobj=blob_stream) as gzip_stream:
+                        with io.TextIOWrapper(gzip_stream, encoding='utf-8') as text_stream:
+                            # Skip header
+                            next(text_stream, None)
+                            # Count records
+                            record_count = sum(1 for _ in text_stream)
             except Exception as e:
                 print(f"Error counting records in {dataset}: {str(e)}")
                 record_count = -1  # Indicate error
