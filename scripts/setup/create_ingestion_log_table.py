@@ -14,7 +14,6 @@ def create_ingestion_log_table():
         bigquery.SchemaField("dataset_name", "STRING", mode="REQUIRED"),
         bigquery.SchemaField("ingestion_date", "TIMESTAMP", mode="REQUIRED"),
         bigquery.SchemaField("file_size_bytes", "INTEGER", mode="REQUIRED"),
-        bigquery.SchemaField("record_count", "INTEGER", mode="REQUIRED"),
         bigquery.SchemaField("md5_hash", "STRING", mode="REQUIRED"),
         bigquery.SchemaField("has_changed", "BOOLEAN", mode="REQUIRED"),
     ]
