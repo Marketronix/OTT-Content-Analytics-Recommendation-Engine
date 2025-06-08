@@ -13,7 +13,7 @@ load_dotenv()
 # Import helper functions
 import sys
 sys.path.append('/home/airflow/gcs/dags')
-from ingestion.helpers import download_to_gcs, check_dataset_changes, extract_metadata
+from ingestion.helpers import check_dataset_changes, extract_metadata
 
 # Define default arguments
 default_args = {
