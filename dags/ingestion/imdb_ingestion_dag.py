@@ -47,45 +47,33 @@ print(f"Using datasets: {DATASETS}")
 with DAG(
     'imdb_data_ingestion',
     default_args=default_args,
-    description='Ingest IMDb datasets to GCS',
+    description='Process IMDb datasets from GCS',
     schedule_interval='@weekly',  # Weekly refresh
     start_date=datetime(2025, 6, 1),
     catchup=False,
     tags=['imdb', 'ingestion'],
 ) as dag:
     
-    # Task 1: Download IMDb datasets directly to GCS
-    download_datasets = PythonOperator(
-        task_id='download_imdb_datasets',
-        python_callable=download_to_gcs,
-        op_kwargs={
-            'datasets': DATASETS,  # Use our explicit list
-            'bucket_name': RAW_DATA_BUCKET,
-            'prefix': 'imdb/'
-        },
-        execution_timeout=timedelta(hours=2)
-    )
-   
-    # Task 2: Check for dataset changes
+    # Task 1: Check for dataset changes (files already in GCS)
     check_changes = PythonOperator(
         task_id='check_dataset_changes',
         python_callable=check_dataset_changes,
         op_kwargs={
             'datasets': DATASETS,
             'bucket_name': RAW_DATA_BUCKET,
-            'prefix': 'imdb/'
+            'prefix': 'IMDB/'
         },
         provide_context=True
     )
     
-    # Task 3: Extract dataset metadata
+    # Task 2: Extract dataset metadata
     extract_dataset_metadata = PythonOperator(
         task_id='extract_dataset_metadata',
         python_callable=extract_metadata,
         op_kwargs={
             'datasets': DATASETS,
             'bucket_name': RAW_DATA_BUCKET,
-            'prefix': 'imdb/'
+            'prefix': 'IMDB/'
         },
         provide_context=True
     )
@@ -121,4 +109,4 @@ with DAG(
     )
     
     # Define the task dependencies
-    download_datasets >> check_changes >> extract_dataset_metadata >> log_ingestion_metadata
+    check_changes >> extract_dataset_metadata >> log_ingestion_metadata
