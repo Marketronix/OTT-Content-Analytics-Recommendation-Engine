@@ -33,13 +33,13 @@ ARCHIVE_DATA_BUCKET = os.getenv('ARCHIVE_DATA_BUCKET')
 PROJECT_ID = os.getenv('GCP_PROJECT_ID')
 BIGQUERY_DATASET = os.getenv('BIGQUERY_DATASET')
 DATASETS = [
-    'name.basics.tsv.gz',
-    'title.akas.tsv.gz',
-    'title.basics.tsv.gz',
-    'title.crew.tsv.gz',
-    'title.episode.tsv.gz',
-    'title.principals.tsv.gz',
-    'title.ratings.tsv.gz'
+    'title.basics.tsv',
+    'title.ratings.tsv',
+    'title.crew.tsv',
+    'title.episode.tsv',
+    'title.principals.tsv',
+    'title.akas.tsv',
+    'name.basics.tsv'
 ]
 
 print(f"Using datasets: {DATASETS}")
