@@ -48,6 +48,7 @@ jobs:
 
   deploy-dataflow:
     runs-on: ubuntu-latest
+    needs: deploy-dags
     # Only run if scripts/streaming directory has changed
     if: contains(github.event.head_commit.modified, 'scripts/streaming/') || contains(github.event.head_commit.added, 'scripts/streaming/')
     steps:
