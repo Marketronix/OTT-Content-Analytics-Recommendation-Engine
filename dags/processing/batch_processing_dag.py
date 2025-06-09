@@ -64,16 +64,9 @@ def get_cluster_config(zone_uri):
             "properties": {
                 "spark:spark.executor.memory": "4g",
                 "spark:spark.driver.memory": "4g",
+                "dataproc:pip.packages": "google-cloud-bigquery==3.34.0"  # Latest version
             }
-        },
-        # Add initialization action to install packages
-        "initialization_actions": [
-            {
-                "executable_file": "gs://goog-dataproc-initialization-actions-us-east4/python/pip-install.sh",
-                "execution_timeout": {"seconds": 300},
-                "args": ["google-cloud-bigquery=3.34.0"]
-            }
-        ]
+        }
     }
 
 
