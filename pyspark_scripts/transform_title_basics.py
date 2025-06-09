@@ -12,8 +12,11 @@ def create_spark_session():
 
 def transform_title_basics(spark, input_file, output_table, temp_bucket):
     """
-    Transform title_basics dataset and load to BigQuery using a more direct approach
-    with intermediate table and direct SQL to handle arrays properly.
+    Transform title_basics dataset:
+    - Convert isAdult from "0"/"1" to boolean
+    - Cast year fields and runtime to integers
+    - Split pipe-delimited genres into arrays
+    - Handle null markers like "\\N"
     """
     # Read the input TSV file
     print(f"Reading input file: {input_file}")
@@ -36,135 +39,93 @@ def transform_title_basics(spark, input_file, output_table, temp_bucket):
          .cast(BooleanType())
     ).withColumn(
         "startYear", 
-        F.when(F.col("startYear").isNull(), None).otherwise(F.col("startYear").cast(StringType()))
+        F.col("startYear").cast(StringType())
     ).withColumn(
         "endYear", 
-        F.when(F.col("endYear").isNull(), None).otherwise(F.col("endYear").cast(StringType()))
+        F.col("endYear").cast(StringType())
     ).withColumn(
         "runtimeMinutes", 
         F.col("runtimeMinutes").cast(IntegerType())
     )
     
-    # Process genres - create individual rows for each genre
-    # This flattened approach will work more reliably with BigQuery loading
-    print("\nCreating flattened genres table...")
+    # For genres, we'll create two versions:
+    # 1. A string version for the main table
+    # 2. An exploded version that we'll load to a separate table
     
-    # First create a base table with all fields except genres
-    base_table = transformed_df.select(
-        "tconst", "titleType", "primaryTitle", "originalTitle", 
-        "isAdult", "startYear", "endYear", "runtimeMinutes"
-    )
+    # Create the main DataFrame with genres as string
+    main_df = transformed_df
     
-    # Register as temp view for SQL
-    base_table.createOrReplaceTempView("title_basics_base")
-    
-    # Create a separate genres table with tconst and genre
-    genres_df = transformed_df.select(
-        "tconst", 
+    # Create a separate DataFrame with exploded genres
+    # This will have one row per genre per title
+    exploded_df = transformed_df.select(
+        "tconst",
         F.explode(
-            F.when(F.col("genres").isNull() | (F.col("genres") == ""), F.array(F.lit(None)))
-             .otherwise(F.split(F.col("genres"), ","))
+            F.when(
+                F.col("genres").isNull() | (F.col("genres") == ""), 
+                F.array(F.lit(None))
+            ).otherwise(
+                F.split(F.col("genres"), ",")
+            )
         ).alias("genre")
     ).filter(F.col("genre").isNotNull())
     
-    # Show sample of genres table
-    print("\nSample of flattened genres table:")
-    genres_df.show(10, truncate=False)
+    # Register temporary views for SQL operations
+    main_df.createOrReplaceTempView("title_basics")
+    exploded_df.createOrReplaceTempView("title_genres")
     
-    # Register as temp view
-    genres_df.createOrReplaceTempView("title_genres")
+    # Print sample of exploded genres
+    print("\nSample of exploded genres table:")
+    exploded_df.show(10, truncate=False)
     
-    # Save base table to BigQuery
-    print(f"Writing base table to BigQuery: {output_table}")
+    print("\nTransformed Schema:")
+    main_df.printSchema()
+    print("\nTransformed sample data:")
+    main_df.show(5, truncate=False)
+    
+    transformed_count = main_df.count()
+    print(f"Transformed record count: {transformed_count}")
+    
+    validate_data(main_df)
+    
+    print(f"Writing main table to BigQuery: {output_table}")
     temp_bucket_name = temp_bucket.replace("gs://", "") if temp_bucket.startswith("gs://") else temp_bucket
     
-    # Save base table to BigQuery
-    base_table.write \
+    # Write main table to BigQuery
+    main_df.write \
         .format("bigquery") \
         .option("table", output_table) \
         .option("temporaryGcsBucket", temp_bucket_name) \
+        .option("createDisposition", "CREATE_IF_NEEDED") \
         .option("writeDisposition", "WRITE_TRUNCATE") \
         .save()
     
-    # Save genres to a separate staging table
-    genres_staging_table = f"{output_table}_genres_staging"
-    genres_df.write \
+    # Write exploded genres to a separate table
+    genres_table = f"{output_table}_genres"
+    print(f"Writing genres table to BigQuery: {genres_table}")
+    
+    exploded_df.write \
         .format("bigquery") \
-        .option("table", genres_staging_table) \
+        .option("table", genres_table) \
         .option("temporaryGcsBucket", temp_bucket_name) \
+        .option("createDisposition", "CREATE_IF_NEEDED") \
         .option("writeDisposition", "WRITE_TRUNCATE") \
         .save()
-    
-    # Now use BigQuery SQL to merge the genres into the main table
-    from google.cloud import bigquery
-    client = bigquery.Client()
-    
-    # Extract dataset and table name from output_table
-    project_dataset_table = output_table.split('.')
-    if len(project_dataset_table) == 3:
-        project, dataset, table = project_dataset_table
-    elif len(project_dataset_table) == 2:
-        project = client.project
-        dataset, table = project_dataset_table
-    else:
-        raise ValueError(f"Invalid table name format: {output_table}")
-    
-    # Create a new table with the genres array using BigQuery SQL
-    print("Creating final table with genres array using BigQuery SQL...")
-    
-    sql = f"""
-    CREATE OR REPLACE TABLE `{project}.{dataset}.{table}_with_genres` AS
-    SELECT 
-        b.tconst, 
-        b.titleType, 
-        b.primaryTitle, 
-        b.originalTitle, 
-        b.isAdult, 
-        b.startYear, 
-        b.endYear, 
-        b.runtimeMinutes,
-        ARRAY_AGG(g.genre IGNORE NULLS) AS genres
-    FROM 
-        `{project}.{dataset}.{table}` b
-    LEFT JOIN 
-        `{project}.{dataset}.{table}_genres_staging` g
-    ON 
-        b.tconst = g.tconst
-    GROUP BY 
-        b.tconst, b.titleType, b.primaryTitle, b.originalTitle, 
-        b.isAdult, b.startYear, b.endYear, b.runtimeMinutes
-    """
-    
-    # Execute the SQL to create the final table
-    query_job = client.query(sql)
-    query_job.result()  # Wait for the query to complete
-    
-    # Now rename the _with_genres table to the original name
-    sql_rename = f"""
-    BEGIN
-      DROP TABLE IF EXISTS `{project}.{dataset}.{table}_old`;
-      ALTER TABLE `{project}.{dataset}.{table}` RENAME TO `{project}.{dataset}.{table}_old`;
-      ALTER TABLE `{project}.{dataset}.{table}_with_genres` RENAME TO `{project}.{dataset}.{table}`;
-    END;
-    """
-    
-    # Execute the rename
-    query_job = client.query(sql_rename)
-    query_job.result()  # Wait for the query to complete
-    
-    # Clean up staging tables
-    sql_cleanup = f"""
-    BEGIN
-      DROP TABLE IF EXISTS `{project}.{dataset}.{table}_old`;
-      DROP TABLE IF EXISTS `{project}.{dataset}.{table}_genres_staging`;
-    END;
-    """
-    
-    # Execute the cleanup
-    query_job = client.query(sql_cleanup)
-    query_job.result()  # Wait for the query to complete
     
     print("Transformation completed successfully")
+    print(f"To create an array field for genres, run the following SQL in BigQuery:")
+    print(f"""
+    CREATE OR REPLACE TABLE `{output_table}_with_arrays` AS
+    SELECT 
+        t.*,
+        ARRAY_AGG(g.genre IGNORE NULLS) AS genres_array
+    FROM 
+        `{output_table}` t
+    LEFT JOIN 
+        `{genres_table}` g ON t.tconst = g.tconst
+    GROUP BY 
+        t.tconst, t.titleType, t.primaryTitle, t.originalTitle, 
+        t.isAdult, t.startYear, t.endYear, t.runtimeMinutes, t.genres;
+    """)
 
 def validate_data(df):
     """Perform data validation checks."""
