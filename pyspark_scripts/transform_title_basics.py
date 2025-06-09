@@ -14,7 +14,7 @@ def transform_title_basics(spark, input_file, output_table, temp_bucket):
     """
     Transform title_basics dataset:
     - Convert isAdult from "0"/"1" to boolean
-    - Cast year fields and runtime to integers
+    - Cast year fields and runtime to correct types
     - Split pipe-delimited genres into arrays
     - Handle null markers like "\\N"
     """
@@ -22,29 +22,27 @@ def transform_title_basics(spark, input_file, output_table, temp_bucket):
     print(f"Reading input file: {input_file}")
     df = spark.read.option("sep", "\t").option("header", "true").option("nullValue", "\\N").csv(input_file)
     
-    # Print the schema and sample data for debugging
     print("Original Schema:")
     df.printSchema()
     print("\nSample data:")
     df.show(5, truncate=False)
     
-    # Count original records
     original_count = df.count()
     print(f"Original record count: {original_count}")
     
-    # Apply transformations
+    # Initial transformations
     transformed_df = df.withColumn(
         "isAdult", 
         F.when(F.col("isAdult") == "1", True)
          .when(F.col("isAdult") == "0", False)
          .otherwise(None)
-        .cast(BooleanType())
+         .cast(BooleanType())
     ).withColumn(
         "startYear", 
-        F.col("startYear").cast(IntegerType())
+        F.when(F.col("startYear").isNull(), None).otherwise(F.col("startYear").cast(StringType()))
     ).withColumn(
         "endYear", 
-        F.col("endYear").cast(IntegerType())
+        F.when(F.col("endYear").isNull(), None).otherwise(F.col("endYear").cast(StringType()))
     ).withColumn(
         "runtimeMinutes", 
         F.col("runtimeMinutes").cast(IntegerType())
@@ -58,36 +56,36 @@ def transform_title_basics(spark, input_file, output_table, temp_bucket):
         )
     )
     
-    # Print transformed schema and sample data
+    # Explicitly cast 'genres' as Array of Strings
+    transformed_df = transformed_df.withColumn(
+        "genres", F.col("genres").cast(ArrayType(StringType()))
+    )
+    
     print("\nTransformed Schema:")
     transformed_df.printSchema()
     print("\nTransformed sample data:")
     transformed_df.show(5, truncate=False)
     
-    # Count transformed records
     transformed_count = transformed_df.count()
     print(f"Transformed record count: {transformed_count}")
     
-    # Validate data
     validate_data(transformed_df)
     
-    # Write to BigQuery
     print(f"Writing to BigQuery table: {output_table}")
-    # Remove gs:// prefix from temp bucket if present
     temp_bucket_name = temp_bucket.replace("gs://", "") if temp_bucket.startswith("gs://") else temp_bucket
     
     transformed_df.write \
         .format("bigquery") \
         .option("table", output_table) \
         .option("temporaryGcsBucket", temp_bucket_name) \
-        .mode("overwrite") \
+        .option("createDisposition", "CREATE_IF_NEEDED") \
+        .option("writeDisposition", "WRITE_TRUNCATE") \
         .save()
-    
+
     print("Transformation completed successfully")
 
 def validate_data(df):
     """Perform data validation checks."""
-    # Count nulls in key fields
     print("\nNull checks:")
     null_counts = df.select([
         F.sum(F.when(F.col(c).isNull(), 1).otherwise(0)).alias(c)
@@ -97,7 +95,6 @@ def validate_data(df):
     for col, count in null_counts.items():
         print(f"  {col}: {count} nulls")
     
-    # Validate year ranges
     print("\nYear range validation:")
     year_stats = df.select(
         F.min("startYear").alias("min_start_year"),
@@ -109,7 +106,6 @@ def validate_data(df):
     print(f"  Start year range: {year_stats['min_start_year']} - {year_stats['max_start_year']}")
     print(f"  End year range: {year_stats['min_end_year']} - {year_stats['max_end_year']}")
     
-    # Check for invalid years (future years)
     current_year = 2025
     future_start_years = df.filter(F.col("startYear") > current_year).count()
     future_end_years = df.filter(
@@ -119,11 +115,9 @@ def validate_data(df):
     print(f"  Titles with future start years: {future_start_years}")
     print(f"  Titles with future end years: {future_end_years}")
     
-    # Check for invalid runtime (negative)
     negative_runtime = df.filter(F.col("runtimeMinutes") < 0).count()
     print(f"  Titles with negative runtime: {negative_runtime}")
     
-    # Check primary key uniqueness
     total = df.count()
     distinct = df.select("tconst").distinct().count()
     duplicates = total - distinct
@@ -133,7 +127,6 @@ def validate_data(df):
         print("WARNING: Primary key constraint violated - duplicate tconst values found")
 
 def parse_arguments():
-    """Parse command line arguments."""
     parser = argparse.ArgumentParser(description="Transform IMDb title_basics data")
     parser.add_argument("--project_id", required=True, help="GCP Project ID")
     parser.add_argument("--input_file", required=True, help="Input file path in GCS")
@@ -142,7 +135,6 @@ def parse_arguments():
     return parser.parse_args()
 
 def main():
-    """Main entry point."""
     args = parse_arguments()
     spark = create_spark_session()
     try:
