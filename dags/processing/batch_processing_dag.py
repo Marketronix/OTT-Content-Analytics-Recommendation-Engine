@@ -64,9 +64,8 @@ def get_cluster_config(zone_uri):
             "properties": {
                 "spark:spark.executor.memory": "4g",
                 "spark:spark.driver.memory": "4g",
-                "dataproc:pip.packages": "google-cloud-bigquery==3.34.0"  # Latest version
-            }
-        }
+            },
+        },
     }
 
 
