@@ -62,23 +62,24 @@ def get_cluster_config(zone_uri):
         "software_config": {
             "image_version": "2.0-debian10",
             "properties": {
-                "spark:spark.executor.memory": "4g",
-                "spark:spark.driver.memory": "4g",
+                "spark:spark.executor.memory": "6g",  # Increased from 4g
+                "spark:spark.driver.memory": "6g",    # Increased from 4g
+                "spark:spark.executor.memoryOverhead": "2g",  # Added memory overhead
+                "spark:spark.driver.memoryOverhead": "2g",    # Added memory overhead
+                "spark:spark.yarn.scheduler.capacity.maximum-am-resource-percent": "0.5", # Allow more executors
             },
         },
     }
 
-
-
-# Tables to process
+# Tables to process in order of processing (smaller tables first, larger ones later)
 TABLES = [
-    "title_basics",
-    "title_ratings",
-    "title_crew",
-    # "title_episode",
-    # "title_principals",
-    # "title_akas",
-    # "name_basics"
+    "title_ratings",     # Typically smallest
+    "title_episode",     # Typically small
+    "title_crew",        # Medium size
+    "name_basics"        # Medium size
+    "title_basics",      # Medium size
+    "title_akas",        # Medium-large
+    "title_principals"  # Large
 ]
 
 # File name mapping
@@ -91,6 +92,11 @@ FILE_NAME_MAPPING = {
     "title_akas": "title.akas.tsv",
     "name_basics": "name.basics.tsv"
 }
+
+# Table size categories (for timeout and retry configuration)
+LARGE_TABLES = ["title_principals", "title_akas"]
+MEDIUM_TABLES = ["title_basics", "title_crew", "name_basics"]
+SMALL_TABLES = ["title_ratings", "title_episode"]
 
 # Function to list files in GCS
 def list_gcs_files():
@@ -178,18 +184,37 @@ with DAG(
             }
         }
 
+        # Configure timeouts and retries based on table size
+        execution_timeout = None
+        retries = default_args['retries']
+        retry_delay = default_args['retry_delay']
+        
+        if table in LARGE_TABLES:
+            execution_timeout = timedelta(hours=3)
+            retries = 3
+        elif table in MEDIUM_TABLES:
+            execution_timeout = timedelta(hours=2)
+            retries = 2
+        
         transform_task = DataprocSubmitJobOperator(
             task_id=f'transform_{table}',
             job=pyspark_job,
             region=REGION,
             project_id=PROJECT_ID,
             gcp_conn_id='google_cloud_default',
+            execution_timeout=execution_timeout,
+            retries=retries,
+            retry_delay=retry_delay,
         )
         transform_tasks.append(transform_task)
 
-    cluster_created >> transform_tasks
+    # Set up sequential processing of tables
+    previous_task = cluster_created
+    for transform_task in transform_tasks:
+        previous_task >> transform_task
+        previous_task = transform_task
 
-    # Delete the cluster after all transforms (or if any fail)
+    # Delete the cluster after all transforms complete
     delete_cluster = DataprocDeleteClusterOperator(
         task_id='delete_dataproc_cluster',
         project_id=PROJECT_ID,
@@ -199,7 +224,7 @@ with DAG(
         gcp_conn_id='google_cloud_default',
     )
 
-    transform_tasks >> delete_cluster
+    transform_tasks[-1] >> delete_cluster
 
     # Connect sensor to log_files
     check_raw_data >> log_files
