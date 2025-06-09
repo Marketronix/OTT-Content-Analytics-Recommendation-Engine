@@ -46,29 +46,28 @@ FALLBACK_ZONES = [
 # Function to create cluster config with specified zone
 def get_cluster_config(zone_uri):
     return {
-        "config": {
-            "gce_cluster_config": {
-                "zone_uri": zone_uri,
+        "gce_cluster_config": {
+            "zone_uri": zone_uri,
+        },
+        "master_config": {
+            "num_instances": 1,
+            "machine_type_uri": "n1-standard-4",
+            "disk_config": {"boot_disk_type": "pd-standard", "boot_disk_size_gb": 100},
+        },
+        "worker_config": {
+            "num_instances": 2,
+            "machine_type_uri": "n1-standard-4",
+            "disk_config": {"boot_disk_type": "pd-standard", "boot_disk_size_gb": 100},
+        },
+        "software_config": {
+            "image_version": "2.0-debian10",
+            "properties": {
+                "spark:spark.executor.memory": "4g",
+                "spark:spark.driver.memory": "4g",
             },
-            "master_config": {
-                "num_instances": 1,
-                "machine_type_uri": "n1-standard-4",
-                "disk_config": {"boot_disk_type": "pd-standard", "boot_disk_size_gb": 100},
-            },
-            "worker_config": {
-                "num_instances": 2,
-                "machine_type_uri": "n1-standard-4",
-                "disk_config": {"boot_disk_type": "pd-standard", "boot_disk_size_gb": 100},
-            },
-            "software_config": {
-                "image_version": "2.0-debian10",
-                "properties": {
-                    "spark:spark.executor.memory": "4g",
-                    "spark:spark.driver.memory": "4g",
-                },
-            },
-        }
+        },
     }
+
 
 # Tables to process
 TABLES = [
