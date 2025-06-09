@@ -71,7 +71,7 @@ def get_cluster_config(zone_uri):
             {
                 "executable_file": "gs://goog-dataproc-initialization-actions-us-east4/python/pip-install.sh",
                 "execution_timeout": {"seconds": 300},
-                "args": ["google-cloud-bigquery"]
+                "args": ["google-cloud-bigquery=3.34.0"]
             }
         ]
     }
