@@ -10,6 +10,7 @@ from airflow.providers.google.cloud.operators.dataproc import (
 from airflow.providers.google.cloud.sensors.gcs import GCSObjectsWithPrefixExistenceSensor
 from airflow.operators.python import PythonOperator
 from airflow.models import Variable
+from google.cloud import storage
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -59,13 +60,40 @@ CLUSTER_CONFIG = {
 # List of tables to process
 TABLES = [
     "title_basics",
-    "title_ratings",
-    "title_crew",
-    "title_episode",
-    "title_principals",
-    "title_akas", 
-    "name_basics"
+    # "title_ratings",
+    # "title_crew",
+    # "title_episode",
+    # "title_principals",
+    # "title_akas", 
+    # "name_basics"
 ]
+
+# Mapping of table names to file names
+FILE_NAME_MAPPING = {
+    "title_basics": "title.basics.tsv",
+    "title_ratings": "title.ratings.tsv",
+    "title_crew": "title.crew.tsv",
+    "title_episode": "title.episode.tsv",
+    "title_principals": "title.principals.tsv",
+    "title_akas": "title.akas.tsv",
+    "name_basics": "name.basics.tsv"
+}
+
+# Function to log the files in GCS
+def list_gcs_files():
+    """List all files in the IMDB/ prefix in the raw data bucket."""
+    client = storage.Client()
+    blobs = client.list_blobs(RAW_BUCKET, prefix='IMDB/')
+    files = [blob.name for blob in blobs]
+
+    if files:
+        print(f"✅ Raw data found! Files: {files}")
+        for file in files:
+            print(f"  - {file}")
+    else:
+        print("⚠️ No raw data found in IMDB/ prefix.")
+    
+    return files
 
 # Create the DAG
 with DAG(
@@ -73,7 +101,7 @@ with DAG(
     default_args=default_args,
     description='Process IMDb datasets with Dataproc',
     schedule_interval=None,  # Manually triggered after ingestion
-    start_date=datetime(2025, 8, 6),
+    start_date=datetime(2025, 6, 1),
     catchup=False,
     tags=['imdb', 'processing', 'dataproc'],
 ) as dag:
@@ -84,8 +112,14 @@ with DAG(
         bucket=RAW_BUCKET,
         prefix='IMDB/',
         google_cloud_conn_id='google_cloud_default',
-        poke_interval=120,  # check every 2 minutes
-        timeout=600,  # timeout after 10 minutes
+        poke_interval=30,  # check every 30 seconds
+        timeout=300,  # timeout after 5 minutes
+    )
+
+    # Log the available files
+    log_files = PythonOperator(
+        task_id='log_raw_data_files',
+        python_callable=list_gcs_files,
     )
 
     # Create Dataproc cluster
@@ -111,7 +145,9 @@ with DAG(
     # Create PySpark job tasks for each table
     transform_tasks = []
     for table in TABLES:
-        file_name = table.replace('_', '.') + '.tsv'
+        # Get the corresponding file name from the mapping
+        file_name = FILE_NAME_MAPPING[table]
+        
         # Create a PySpark job configuration
         pyspark_job = {
             "reference": {"project_id": PROJECT_ID},
@@ -138,7 +174,7 @@ with DAG(
         transform_tasks.append(transform_task)
 
     # Set up task dependencies
-    check_raw_data >> create_cluster
+    check_raw_data >> log_files >> create_cluster
     
     for task in transform_tasks:
         create_cluster >> task >> delete_cluster
