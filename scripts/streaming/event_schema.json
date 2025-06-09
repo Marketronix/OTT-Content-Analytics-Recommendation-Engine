@@ -1,0 +1,67 @@
+{
+    "__comment_event_id": "Unique identifier for the event",
+    "event_id": "string",
+  
+    "__comment_user_id": "Unique identifier for the user",
+    "user_id": "string",
+  
+    "__comment_content_id": "IMDb tconst or internal content ID",
+    "content_id": "string",
+  
+    "__comment_event_type": "Type of event: start, pause, resume, complete, rate, etc.",
+    "event_type": "string",
+  
+    "__comment_timestamp": "When the event occurred",
+    "timestamp": "2025-06-09T13:45:00Z",
+  
+    "__comment_session_id": "Viewing session identifier",
+    "session_id": "string",
+  
+    "__comment_duration": "Duration in seconds (for relevant events)",
+    "duration": 120,
+  
+    "__comment_position": "Playback position in seconds",
+    "position": 80,
+  
+    "device": {
+      "__comment_type": "mobile, tv, web, tablet",
+      "type": "mobile",
+  
+      "__comment_os": "iOS, Android, Windows, macOS, etc.",
+      "os": "Android",
+  
+      "__comment_browser": "Chrome, Safari, app, etc.",
+      "browser": "Chrome",
+  
+      "__comment_model": "Device model if applicable",
+      "model": "Pixel 7"
+    },
+  
+    "location": {
+      "__comment_country": "Country code",
+      "country": "US",
+  
+      "__comment_region": "State/province/region",
+      "region": "CA",
+  
+      "__comment_city": "City",
+      "city": "Los Angeles"
+    },
+  
+    "quality": {
+      "__comment_resolution": "SD, HD, 4K, etc.",
+      "resolution": "HD",
+  
+      "__comment_bitrate": "Bitrate in kbps",
+      "bitrate": 1500
+    },
+  
+    "__comment_rating": "User rating (1-5 or 1-10)",
+    "rating": 8,
+  
+    "__comment_extra_attributes": "Additional attributes as needed",
+    "extra_attributes": {
+      "subtitle_enabled": true
+    }
+  }
+  
