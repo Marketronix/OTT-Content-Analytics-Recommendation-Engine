@@ -10,6 +10,7 @@ from airflow.providers.google.cloud.operators.dataproc import (
 from airflow.providers.google.cloud.sensors.gcs import GCSObjectsWithPrefixExistenceSensor
 from airflow.operators.python import PythonOperator
 from airflow.models import Variable
+from airflow.utils.trigger_rule import TriggerRule
 from google.cloud import storage
 from dotenv import load_dotenv
 
@@ -35,27 +36,15 @@ BQ_DATASET = os.getenv('BIGQUERY_DATASET')
 PYSPARK_SCRIPTS_BUCKET = f"{os.getenv('PROCESSED_DATA_BUCKET')}/pyspark_scripts"
 TEMP_BUCKET = f"{os.getenv('PROCESSED_DATA_BUCKET')}/temp"
 
-# Cluster configuration
+# Cluster name
 CLUSTER_NAME = "imdb-processing-cluster"
-CLUSTER_CONFIG = {
-    "master_config": {
-        "num_instances": 1,
-        "machine_type_uri": "n1-standard-4",
-        "disk_config": {"boot_disk_type": "pd-standard", "boot_disk_size_gb": 100},
-    },
-    "worker_config": {
-        "num_instances": 2,
-        "machine_type_uri": "n1-standard-4",
-        "disk_config": {"boot_disk_type": "pd-standard", "boot_disk_size_gb": 100},
-    },
-    "software_config": {
-        "image_version": "2.0-debian10",
-        "properties": {
-            "spark:spark.executor.memory": "4g",
-            "spark:spark.driver.memory": "4g",
-        },
-    },
-}
+
+# Fallback zones
+FALLBACK_ZONES = [
+    f"https://www.googleapis.com/compute/v1/projects/{PROJECT_ID}/zones/{REGION}-a",
+    f"https://www.googleapis.com/compute/v1/projects/{PROJECT_ID}/zones/{REGION}-b",
+    f"https://www.googleapis.com/compute/v1/projects/{PROJECT_ID}/zones/{REGION}-c"
+]
 
 # List of tables to process
 TABLES = [
@@ -95,6 +84,31 @@ def list_gcs_files():
     
     return files
 
+# Function to dynamically build cluster config for given zone
+def get_cluster_config(zone_uri):
+    return {
+        "gce_cluster_config": {
+            "zone_uri": zone_uri
+        },
+        "master_config": {
+            "num_instances": 1,
+            "machine_type_uri": "n1-standard-4",
+            "disk_config": {"boot_disk_type": "pd-standard", "boot_disk_size_gb": 100},
+        },
+        "worker_config": {
+            "num_instances": 2,
+            "machine_type_uri": "n1-standard-4",
+            "disk_config": {"boot_disk_type": "pd-standard", "boot_disk_size_gb": 100},
+        },
+        "software_config": {
+            "image_version": "2.0-debian10",
+            "properties": {
+                "spark:spark.executor.memory": "4g",
+                "spark:spark.driver.memory": "4g",
+            },
+        },
+    }
+
 # Create the DAG
 with DAG(
     'imdb_batch_processing',
@@ -122,15 +136,30 @@ with DAG(
         python_callable=list_gcs_files,
     )
 
-    # Create Dataproc cluster
-    create_cluster = DataprocCreateClusterOperator(
-        task_id='create_dataproc_cluster',
-        project_id=PROJECT_ID,
-        cluster_config=CLUSTER_CONFIG,
-        region=REGION,
-        cluster_name=CLUSTER_NAME,
-        gcp_conn_id='google_cloud_default',
-    )
+    # Create fallback create_cluster tasks
+    previous_create_task = None
+    create_cluster_tasks = []
+
+    for index, zone_uri in enumerate(FALLBACK_ZONES):
+        create_task = DataprocCreateClusterOperator(
+            task_id=f'create_dataproc_cluster_zone_{index+1}',
+            project_id=PROJECT_ID,
+            cluster_config=get_cluster_config(zone_uri),
+            region=REGION,
+            cluster_name=CLUSTER_NAME,
+            gcp_conn_id='google_cloud_default',
+            trigger_rule=TriggerRule.ALL_FAILED if index > 0 else TriggerRule.ALL_SUCCESS,  # fallback if previous failed
+        )
+        create_cluster_tasks.append(create_task)
+        
+        if index == 0:
+            # First create task depends on log_files
+            log_files >> create_task
+        else:
+            # Fallback: trigger this if previous create task failed
+            previous_create_task >> create_task
+        
+        previous_create_task = create_task
 
     # Delete Dataproc cluster
     delete_cluster = DataprocDeleteClusterOperator(
@@ -145,10 +174,8 @@ with DAG(
     # Create PySpark job tasks for each table
     transform_tasks = []
     for table in TABLES:
-        # Get the corresponding file name from the mapping
         file_name = FILE_NAME_MAPPING[table]
         
-        # Create a PySpark job configuration
         pyspark_job = {
             "reference": {"project_id": PROJECT_ID},
             "placement": {"cluster_name": CLUSTER_NAME},
@@ -174,7 +201,7 @@ with DAG(
         transform_tasks.append(transform_task)
 
     # Set up task dependencies
-    check_raw_data >> log_files >> create_cluster
-    
+    check_raw_data >> log_files
+
     for task in transform_tasks:
-        create_cluster >> task >> delete_cluster
+        previous_create_task >> task >> delete_cluster
