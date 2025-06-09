@@ -1,14 +1,15 @@
 # .github/workflows/deploy-dags.yml
-name: Deploy DAGs to Cloud Composer
+name: Deploy DAGs and Streaming Pipeline
 
 on:
   push:
     branches: [ main ]
     paths:
       - 'dags/**'
+      - 'scripts/streaming/**'
 
 jobs:
-  deploy:
+  deploy-dags:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
@@ -31,6 +32,7 @@ jobs:
         echo "ARCHIVE_DATA_BUCKET=${{ secrets.ARCHIVE_DATA_BUCKET }}" >> .env
         echo "IMDB_DATASETS=${{ secrets.IMDB_DATASETS }}" >> .env
         echo "BIGQUERY_DATASET=${{ secrets.BIGQUERY_DATASET }}" >> .env
+        echo "GCP_REGION=${{ secrets.GCP_REGION }}" >> .env
     
     - name: Setup GCP Credentials
       run: |
@@ -42,5 +44,58 @@ jobs:
         GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
         GCP_COMPOSER_BUCKET: ${{ secrets.GCP_COMPOSER_BUCKET }}
       run: |
-        # This is a placeholder for the actual deployment script.
         python scripts/deploy_dags_to_composer.py
+
+  deploy-dataflow:
+    runs-on: ubuntu-latest
+    # Only run if scripts/streaming directory has changed
+    if: contains(github.event.head_commit.modified, 'scripts/streaming/') || contains(github.event.head_commit.added, 'scripts/streaming/')
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Setup GCP Credentials
+      run: |
+        echo '${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}' > /tmp/gcp-credentials.json
+        echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-credentials.json" >> $GITHUB_ENV
+    
+    - name: Setup gcloud CLI
+      uses: google-github-actions/setup-gcloud@v0
+      with:
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
+        service_account_key: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}
+        export_default_credentials: true
+    
+    - name: Authenticate Docker to GCR
+      run: gcloud auth configure-docker
+    
+    - name: Create Setup Scripts
+      run: |
+        # Create BigQuery events table
+        pip install google-cloud-bigquery
+        python scripts/setup/create_events_tables.py
+        
+        # Create Pub/Sub topics and subscriptions
+        pip install google-cloud-pubsub
+        python scripts/setup/create_pubsub_topics.py
+    
+    - name: Submit Cloud Build
+      env:
+        PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        REGION: ${{ secrets.GCP_REGION }}
+        PROCESSED_BUCKET: ${{ secrets.PROCESSED_DATA_BUCKET }}
+      run: |
+        gcloud builds submit \
+          --config=cloudbuild.yaml \
+          --substitutions=_PROCESSED_BUCKET=${PROCESSED_BUCKET} \
+          .
+    
+    - name: Test Event Simulator
+      if: false  # Disabled by default, set to true to enable testing
+      run: |
+        pip install google-cloud-pubsub
+        python scripts/streaming/event_simulator.py \
+          --project_id=${{ secrets.GCP_PROJECT_ID }} \
+          --topic_name=ott-raw-events \
+          --user_count=10 \
+          --events_per_user=5 \
+          --rate_limit=1
