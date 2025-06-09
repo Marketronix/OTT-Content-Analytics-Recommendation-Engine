@@ -199,3 +199,6 @@ with DAG(
     )
 
     transform_tasks >> delete_cluster
+
+    # Connect sensor to log_files
+    check_raw_data >> log_files
