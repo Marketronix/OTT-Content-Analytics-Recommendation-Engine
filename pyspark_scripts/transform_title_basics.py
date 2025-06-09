@@ -1,4 +1,3 @@
-# pyspark_scripts/transform_title_basics.py
 import argparse
 import pyspark.sql.functions as F
 from pyspark.sql import SparkSession
@@ -17,11 +16,11 @@ def transform_title_basics(spark, input_file, output_table, temp_bucket):
     - Convert isAdult from "0"/"1" to boolean
     - Cast year fields and runtime to integers
     - Split pipe-delimited genres into arrays
-    - Handle null markers like "\N"
+    - Handle null markers like "\\N"
     """
     # Read the input TSV file
     print(f"Reading input file: {input_file}")
-    df = spark.read.option("sep", "\t").option("header", "true").csv(input_file)
+    df = spark.read.option("sep", "\t").option("header", "true").option("nullValue", "\\N").csv(input_file)
     
     # Print the schema and sample data for debugging
     print("Original Schema:")
@@ -42,23 +41,17 @@ def transform_title_basics(spark, input_file, output_table, temp_bucket):
         .cast(BooleanType())
     ).withColumn(
         "startYear", 
-        F.when(F.col("startYear") == "\\N", None)
-         .otherwise(F.col("startYear"))
-        .cast(IntegerType())
+        F.col("startYear").cast(IntegerType())
     ).withColumn(
         "endYear", 
-        F.when(F.col("endYear") == "\\N", None)
-         .otherwise(F.col("endYear"))
-        .cast(IntegerType())
+        F.col("endYear").cast(IntegerType())
     ).withColumn(
         "runtimeMinutes", 
-        F.when(F.col("runtimeMinutes") == "\\N", None)
-         .otherwise(F.col("runtimeMinutes"))
-        .cast(IntegerType())
+        F.col("runtimeMinutes").cast(IntegerType())
     ).withColumn(
         "genres", 
         F.when(
-            F.col("genres") == "\\N", 
+            F.col("genres").isNull(), 
             F.array()
         ).otherwise(
             F.split(F.col("genres"), "\\|")
@@ -80,10 +73,13 @@ def transform_title_basics(spark, input_file, output_table, temp_bucket):
     
     # Write to BigQuery
     print(f"Writing to BigQuery table: {output_table}")
+    # Remove gs:// prefix from temp bucket if present
+    temp_bucket_name = temp_bucket.replace("gs://", "") if temp_bucket.startswith("gs://") else temp_bucket
+    
     transformed_df.write \
         .format("bigquery") \
         .option("table", output_table) \
-        .option("temporaryGcsBucket", temp_bucket.replace("gs://", "")) \
+        .option("temporaryGcsBucket", temp_bucket_name) \
         .mode("overwrite") \
         .save()
     
