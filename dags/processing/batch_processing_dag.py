@@ -76,7 +76,7 @@ TABLES = [
     "title_ratings",     # Typically smallest
     "title_episode",     # Typically small
     "title_crew",        # Medium size
-    "name_basics"        # Medium size
+    "name_basics",        # Medium size
     "title_basics",      # Medium size
     "title_akas",        # Medium-large
     "title_principals"  # Large
