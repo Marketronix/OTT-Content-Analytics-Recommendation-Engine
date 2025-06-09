@@ -61,12 +61,15 @@ def get_cluster_config(zone_uri):
         },
         "software_config": {
             "image_version": "2.0-debian10",
+            "optional_components": [],  # Empty for now; add like 'ANACONDA', 'JUPYTER' if needed
+            "python_package_list": ["google-cloud-bigquery"],
             "properties": {
                 "spark:spark.executor.memory": "4g",
                 "spark:spark.driver.memory": "4g",
             },
         },
     }
+
 
 
 # Tables to process
