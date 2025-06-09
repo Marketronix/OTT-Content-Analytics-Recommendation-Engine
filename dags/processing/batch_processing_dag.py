@@ -73,8 +73,8 @@ def get_cluster_config(zone_uri):
 # Tables to process
 TABLES = [
     "title_basics",
-    # "title_ratings",
-    # "title_crew",
+    "title_ratings",
+    "title_crew",
     # "title_episode",
     # "title_principals",
     # "title_akas",
