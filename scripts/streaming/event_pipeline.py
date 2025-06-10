@@ -1,4 +1,4 @@
-# scripts/streaming/event_pipeline.py
+# Updated event_pipeline.py
 import argparse
 import json
 import logging
@@ -37,6 +37,36 @@ def run(argv=None):
     pipeline_options = PipelineOptions(pipeline_args)
     pipeline_options.view_as(StandardOptions).streaming = True
     
+    # Define the BigQuery schema
+    schema = {
+        'fields': [
+            {'name': 'event_id', 'type': 'STRING', 'mode': 'REQUIRED'},
+            {'name': 'user_id', 'type': 'STRING', 'mode': 'REQUIRED'},
+            {'name': 'content_id', 'type': 'STRING', 'mode': 'REQUIRED'},
+            {'name': 'event_type', 'type': 'STRING', 'mode': 'REQUIRED'},
+            {'name': 'timestamp', 'type': 'TIMESTAMP', 'mode': 'REQUIRED'},
+            {'name': 'session_id', 'type': 'STRING', 'mode': 'NULLABLE'},
+            {'name': 'duration', 'type': 'INTEGER', 'mode': 'NULLABLE'},
+            {'name': 'position', 'type': 'INTEGER', 'mode': 'NULLABLE'},
+            {'name': 'device', 'type': 'RECORD', 'mode': 'NULLABLE', 'fields': [
+                {'name': 'type', 'type': 'STRING', 'mode': 'NULLABLE'},
+                {'name': 'os', 'type': 'STRING', 'mode': 'NULLABLE'},
+                {'name': 'browser', 'type': 'STRING', 'mode': 'NULLABLE'},
+                {'name': 'model', 'type': 'STRING', 'mode': 'NULLABLE'},
+            ]},
+            {'name': 'location', 'type': 'RECORD', 'mode': 'NULLABLE', 'fields': [
+                {'name': 'country', 'type': 'STRING', 'mode': 'NULLABLE'},
+                {'name': 'region', 'type': 'STRING', 'mode': 'NULLABLE'},
+                {'name': 'city', 'type': 'STRING', 'mode': 'NULLABLE'},
+            ]},
+            {'name': 'quality', 'type': 'RECORD', 'mode': 'NULLABLE', 'fields': [
+                {'name': 'resolution', 'type': 'STRING', 'mode': 'NULLABLE'},
+                {'name': 'bitrate', 'type': 'INTEGER', 'mode': 'NULLABLE'},
+            ]},
+            {'name': 'rating', 'type': 'INTEGER', 'mode': 'NULLABLE'},
+        ]
+    }
+    
     with beam.Pipeline(options=pipeline_options) as p:
         events = (
             p 
@@ -45,7 +75,7 @@ def run(argv=None):
             | 'Parse JSON' >> beam.ParDo(ParseJsonDoFn())
             | 'Write to BigQuery' >> WriteToBigQuery(
                 known_args.output_table,
-                schema='event_id:STRING,user_id:STRING,content_id:STRING,event_type:STRING,timestamp:TIMESTAMP',
+                schema=schema,
                 create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED,
                 write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND
             )
