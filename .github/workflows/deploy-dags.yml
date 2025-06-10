@@ -10,10 +10,10 @@ jobs:
   deploy-dags:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     
     - name: Set up Python
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v4
       with:
         python-version: '3.9'
     
@@ -32,10 +32,11 @@ jobs:
         echo "BIGQUERY_DATASET=${{ secrets.BIGQUERY_DATASET }}" >> .env
         echo "GCP_REGION=${{ secrets.GCP_REGION }}" >> .env
     
-    - name: Setup GCP Credentials
-      run: |
-        echo '${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}' > /tmp/gcp-credentials.json
-        echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-credentials.json" >> $GITHUB_ENV
+    - name: Google Auth
+      id: auth
+      uses: google-github-actions/auth@v1
+      with:
+        credentials_json: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}
     
     - name: Deploy DAGs to Composer
       env:
@@ -46,249 +47,56 @@ jobs:
 
   deploy-dataflow:
     runs-on: ubuntu-latest
-    # No dependency on other jobs
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
     
     - name: Debug Information
       run: |
         echo "Current directory: $(pwd)"
+        echo "Files in current directory:"
+        ls -la
         echo "Files in scripts directory:"
         ls -la scripts/ || echo "Directory not found"
-        echo "Files in cloudbuild.yaml:"
+        echo "Checking cloudbuild.yaml:"
         cat cloudbuild.yaml || echo "File not found"
     
-    - name: Set up Python
-      uses: actions/setup-python@v2
+    - name: Google Auth
+      id: auth
+      uses: google-github-actions/auth@v1
       with:
-        python-version: '3.9'
+        credentials_json: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}
     
-    - name: Create .env file
-      run: |
-        echo "GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}" > .env
-        echo "RAW_DATA_BUCKET=${{ secrets.RAW_DATA_BUCKET }}" >> .env
-        echo "PROCESSED_DATA_BUCKET=${{ secrets.PROCESSED_DATA_BUCKET }}" >> .env
-        echo "ARCHIVE_DATA_BUCKET=${{ secrets.ARCHIVE_DATA_BUCKET }}" >> .env
-        echo "IMDB_DATASETS=${{ secrets.IMDB_DATASETS }}" >> .env
-        echo "BIGQUERY_DATASET=${{ secrets.BIGQUERY_DATASET }}" >> .env
-        echo "GCP_REGION=${{ secrets.GCP_REGION }}" >> .env
-    
-    - name: Setup GCP Credentials
-      run: |
-        echo '${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}' > /tmp/gcp-credentials.json
-        echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-credentials.json" >> $GITHUB_ENV
-    
-    - name: Setup gcloud CLI
-      uses: google-github-actions/setup-gcloud@v0
-      with:
-        project_id: ${{ secrets.GCP_PROJECT_ID }}
-        service_account_key: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}
-        export_default_credentials: true
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v1
     
     - name: Authenticate Docker to GCR
-      run: gcloud auth configure-docker
+      run: gcloud auth configure-docker --quiet
     
-    - name: Create Setup Scripts
+    - name: Enable necessary APIs
       run: |
-        mkdir -p scripts/setup
-        
-        # Create the events table script
-        cat > scripts/setup/create_events_tables.py << 'EOF'
-        from google.cloud import bigquery
-        import os
-        from dotenv import load_dotenv
-
-        # Load environment variables
-        load_dotenv()
-
-        PROJECT_ID = os.getenv('GCP_PROJECT_ID')
-        DATASET_ID = os.getenv('BIGQUERY_DATASET')
-
-        # Initialize client
-        client = bigquery.Client(project=PROJECT_ID)
-
-        # Create events schema
-        events_schema = [
-            bigquery.SchemaField("event_id", "STRING", mode="REQUIRED"),
-            bigquery.SchemaField("user_id", "STRING", mode="REQUIRED"),
-            bigquery.SchemaField("content_id", "STRING", mode="REQUIRED"),
-            bigquery.SchemaField("event_type", "STRING", mode="REQUIRED"),
-            bigquery.SchemaField("timestamp", "TIMESTAMP", mode="REQUIRED"),
-            bigquery.SchemaField("session_id", "STRING", mode="NULLABLE"),
-            bigquery.SchemaField("duration", "INTEGER", mode="NULLABLE"),
-            bigquery.SchemaField("position", "INTEGER", mode="NULLABLE"),
-            bigquery.SchemaField("device", "RECORD", mode="NULLABLE", fields=[
-                bigquery.SchemaField("type", "STRING", mode="NULLABLE"),
-                bigquery.SchemaField("os", "STRING", mode="NULLABLE"),
-                bigquery.SchemaField("browser", "STRING", mode="NULLABLE"),
-                bigquery.SchemaField("model", "STRING", mode="NULLABLE"),
-            ]),
-            bigquery.SchemaField("location", "RECORD", mode="NULLABLE", fields=[
-                bigquery.SchemaField("country", "STRING", mode="NULLABLE"),
-                bigquery.SchemaField("region", "STRING", mode="NULLABLE"),
-                bigquery.SchemaField("city", "STRING", mode="NULLABLE"),
-            ]),
-            bigquery.SchemaField("quality", "RECORD", mode="NULLABLE", fields=[
-                bigquery.SchemaField("resolution", "STRING", mode="NULLABLE"),
-                bigquery.SchemaField("bitrate", "INTEGER", mode="NULLABLE"),
-            ]),
-            bigquery.SchemaField("rating", "INTEGER", mode="NULLABLE"),
-        ]
-
-        # Create the table
-        table_id = f"{PROJECT_ID}.{DATASET_ID}.user_events"
-        table = bigquery.Table(table_id, schema=events_schema)
-
-        # Set table partitioning by timestamp
-        table.time_partitioning = bigquery.TimePartitioning(
-            type_=bigquery.TimePartitioningType.DAY,
-            field="timestamp"
-        )
-
-        # Set table clustering by user_id and content_id
-        table.clustering_fields = ["user_id", "content_id", "event_type"]
-
-        # Create the table
-        table = client.create_table(table, exists_ok=True)
-        print(f"Created table {table_id}")
-        EOF
-        
-        # Create Pub/Sub topics script
-        cat > scripts/setup/create_pubsub_topics.py << 'EOF'
-        import os
-        from google.cloud import pubsub_v1
-        from dotenv import load_dotenv
-
-        # Load environment variables
-        load_dotenv()
-
-        def create_topic(project_id, topic_id):
-            publisher = pubsub_v1.PublisherClient()
-            topic_path = publisher.topic_path(project_id, topic_id)
-            
-            try:
-                topic = publisher.create_topic(request={"name": topic_path})
-                print(f"Created topic: {topic.name}")
-            except Exception as e:
-                print(f"Topic {topic_path} already exists: {e}")
-
-        def create_subscription(project_id, topic_id, subscription_id):
-            publisher = pubsub_v1.PublisherClient()
-            subscriber = pubsub_v1.SubscriberClient()
-            
-            topic_path = publisher.topic_path(project_id, topic_id)
-            subscription_path = subscriber.subscription_path(project_id, subscription_id)
-            
-            try:
-                subscription = subscriber.create_subscription(
-                    request={"name": subscription_path, "topic": topic_path}
-                )
-                print(f"Created subscription: {subscription.name}")
-            except Exception as e:
-                print(f"Subscription {subscription_path} already exists: {e}")
-
-        def main():
-            project_id = os.getenv('GCP_PROJECT_ID')
-            
-            # Create topics
-            create_topic(project_id, 'ott-raw-events')
-            create_topic(project_id, 'ott-processed-events')
-            
-            # Create subscriptions
-            create_subscription(project_id, 'ott-raw-events', 'ott-raw-events-sub')
-            create_subscription(project_id, 'ott-processed-events', 'ott-processed-events-sub')
-            
-            print("Pub/Sub setup complete!")
-
-        if __name__ == "__main__":
-            main()
-        EOF
-        
-        # Create the directories for streaming
-        mkdir -p scripts/streaming
-        
-        # Create Dockerfile
-        cat > scripts/streaming/Dockerfile << 'EOF'
-        FROM apache/beam_python3.9_sdk:2.42.0
-
-        WORKDIR /app
-
-        # Copy the pipeline code
-        COPY event_pipeline.py ./
-
-        # Install dependencies
-        RUN pip install --no-cache-dir google-cloud-pubsub==2.13.6 \
-                                        google-cloud-bigquery==3.3.5
-
-        # Set the entrypoint
-        ENTRYPOINT ["python", "/app/event_pipeline.py"]
-        EOF
-        
-        # Create event pipeline
-        cat > scripts/streaming/event_pipeline.py << 'EOF'
-        import argparse
-        import json
-        import logging
-        import apache_beam as beam
-        from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions
-        from apache_beam.io.gcp.pubsub import ReadFromPubSub
-        from apache_beam.io.gcp.bigquery import WriteToBigQuery
-
-        class ParseJsonDoFn(beam.DoFn):
-            """Parse JSON messages from Pub/Sub."""
-            def process(self, element):
-                try:
-                    event = json.loads(element.decode('utf-8'))
-                    yield event
-                except Exception as e:
-                    logging.error(f"Error parsing event: {e}")
-                    return []
-
-        def run(argv=None):
-            parser = argparse.ArgumentParser()
-            parser.add_argument('--input_subscription', required=True)
-            parser.add_argument('--output_table', required=True)
-            parser.add_argument('--temp_location', required=True)
-            
-            known_args, pipeline_args = parser.parse_known_args(argv)
-            
-            options = PipelineOptions(pipeline_args)
-            options.view_as(StandardOptions).streaming = True
-            
-            with beam.Pipeline(options=options) as p:
-                events = (
-                    p 
-                    | 'Read from PubSub' >> ReadFromPubSub(subscription=known_args.input_subscription)
-                    | 'Parse JSON' >> beam.ParDo(ParseJsonDoFn())
-                    | 'Write to BigQuery' >> WriteToBigQuery(
-                        known_args.output_table,
-                        create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED,
-                        write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND
-                    )
-                )
-
-        if __name__ == '__main__':
-            logging.getLogger().setLevel(logging.INFO)
-            run()
-        EOF
-        
-        # Run setup scripts
-        pip install google-cloud-bigquery google-cloud-pubsub python-dotenv
-        python scripts/setup/create_events_tables.py
-        python scripts/setup/create_pubsub_topics.py
+        gcloud services enable cloudbuild.googleapis.com
+        gcloud services enable dataflow.googleapis.com
+        gcloud services enable artifactregistry.googleapis.com
     
     - name: Submit Cloud Build
-      env:
-        PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-        REGION: ${{ secrets.GCP_REGION }}
-        PROCESSED_DATA_BUCKET: ${{ secrets.PROCESSED_DATA_BUCKET }}
       run: |
+        echo "Submitting Cloud Build job..."
+        
         gcloud builds submit \
           --config=cloudbuild.yaml \
-          --substitutions=_PROCESSED_DATA_BUCKET=${PROCESSED_DATA_BUCKET} \
-          .
-    
-    - name: Test Event Simulator (Disabled)
-      if: false
-      run: |
-        echo "Event simulator testing is disabled"
+          --substitutions=_PROCESSED_DATA_BUCKET=${{ secrets.PROCESSED_DATA_BUCKET }} \
+          . 2>&1 | tee build_output.log
+        
+        # Check if the build was successful
+        if [ $? -ne 0 ]; then
+          echo "Cloud Build failed. See build_output.log for details."
+          cat build_output.log
+          exit 1
+        fi
+        
+        echo "Cloud Build completed successfully!"
