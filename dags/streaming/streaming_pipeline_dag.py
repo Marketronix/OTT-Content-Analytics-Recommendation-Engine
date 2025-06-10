@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 import os
 from airflow import DAG
 from airflow.providers.google.cloud.operators.pubsub import PubSubCreateTopicOperator, PubSubCreateSubscriptionOperator
-from airflow.providers.google.cloud.operators.dataflow import DataflowStartFlexTemplateOperator
+from airflow.providers.google.cloud.operators.dataflow import DataflowCreatePythonJobOperator
 from airflow.operators.bash import BashOperator
 from dotenv import load_dotenv
 
@@ -87,29 +87,29 @@ with DAG(
         task_id='run_event_simulator',
         bash_command=f'pip install google-cloud-pubsub && '
                      f'python /home/airflow/gcs/data/streaming/scripts/event_simulator.py '
-                     f'--project_id={PROJECT_ID} --topic_name={RAW_TOPIC} --user_count=100 --events_per_user=10 --rate_limit=20',
+                     f'--project_id={PROJECT_ID} --topic_name={RAW_TOPIC} --user_count=50 --events_per_user=10 --rate_limit=20',
     )
     
-    # Use pipeline parameters
-    start_dataflow_pipeline = DataflowStartFlexTemplateOperator(
+    # Create the Dataflow job - Python approach
+    start_dataflow_pipeline = DataflowCreatePythonJobOperator(
         task_id='start_dataflow_pipeline',
-        project_id=PROJECT_ID,
+        py_file=f'gs://{GCS_BUCKET}/dataflow/scripts/event_pipeline.py',
+        job_name=JOB_NAME,
+        py_options=[],
+        py_interpreter='python3',
+        py_requirements=['apache-beam[gcp]'],
+        py_system_site_packages=False,
+        dataflow_default_options={
+            'project': PROJECT_ID,
+            'region': REGION,
+            'zone': 'us-east4-c',  # Try a different zone
+            'staging_location': f'{TEMP_LOCATION}/staging',
+            'temp_location': TEMP_LOCATION,
+            'input_subscription': f"projects/{PROJECT_ID}/subscriptions/{RAW_SUB}",
+            'output_table': f"{PROJECT_ID}.{DATASET_ID}.user_events"
+        },
         location=REGION,
-        body={
-            'launchParameter': {
-                'jobName': JOB_NAME,
-                'containerSpecGcsPath': f"gs://{GCS_BUCKET}/dataflow/templates/event_pipeline.json",
-                'parameters': {
-                    'input_subscription': f"projects/{PROJECT_ID}/subscriptions/{RAW_SUB}",
-                    'output_table': f"{PROJECT_ID}.{DATASET_ID}.user_events",
-                    'temp_location': f"{TEMP_LOCATION}",
-                    'worker_zone': 'us-east4-c',
-                    'num_workers': '1',
-                    'max_num_workers': '3',
-                    'machine_type': 'n1-standard-2'
-                }
-            }
-        }
+        wait_until_finished=False
     )
     
     # Set dependencies
