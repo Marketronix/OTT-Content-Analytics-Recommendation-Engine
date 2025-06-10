@@ -1,9 +1,11 @@
+# dags/streaming/streaming_pipeline_dag.py
 from datetime import datetime, timedelta
 import os
 from airflow import DAG
 from airflow.providers.google.cloud.operators.pubsub import PubSubCreateTopicOperator, PubSubCreateSubscriptionOperator
-from airflow.providers.google.cloud.operators.dataflow import DataflowCreatePythonJobOperator
+from airflow.providers.google.cloud.operators.dataflow import DataflowStartFlexTemplateOperator
 from airflow.operators.bash import BashOperator
+from airflow.operators.python import PythonOperator
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -34,6 +36,21 @@ PROCESSED_SUB = 'ott-processed-events-sub'
 
 # Dataflow job name
 JOB_NAME = 'ott-events-processing'
+
+# Function to ensure temp directory exists
+def ensure_temp_directory():
+    """Make sure the temp directory exists in GCS."""
+    from google.cloud import storage
+    
+    client = storage.Client(project=PROJECT_ID)
+    bucket = client.bucket(GCS_BUCKET)
+    
+    # Create an empty file to ensure the directory exists
+    blob = bucket.blob('temp/.directory_marker')
+    blob.upload_from_string('')
+    
+    print(f"Created temp directory marker at gs://{GCS_BUCKET}/temp/")
+    return True
 
 # DAG definition
 with DAG(
@@ -82,6 +99,12 @@ with DAG(
         fail_if_exists=False,
     )
     
+    # Ensure temp directory exists
+    check_temp_dir = PythonOperator(
+        task_id='ensure_temp_directory',
+        python_callable=ensure_temp_directory,
+    )
+    
     # Run event simulator (for testing)
     run_simulator = BashOperator(
         task_id='run_event_simulator',
@@ -90,29 +113,32 @@ with DAG(
                      f'--project_id={PROJECT_ID} --topic_name={RAW_TOPIC} --user_count=50 --events_per_user=10 --rate_limit=20',
     )
     
-    # Create the Dataflow job - Python approach
-    start_dataflow_pipeline = DataflowCreatePythonJobOperator(
+    # Deploy the Dataflow pipeline with modified settings
+    start_dataflow_pipeline = DataflowStartFlexTemplateOperator(
         task_id='start_dataflow_pipeline',
-        py_file=f'gs://{GCS_BUCKET}/dataflow/scripts/event_pipeline.py',
-        job_name=JOB_NAME,
-        py_options=[],
-        py_interpreter='python3',
-        py_requirements=['apache-beam[gcp]'],
-        py_system_site_packages=False,
-        dataflow_default_options={
-            'project': PROJECT_ID,
-            'region': REGION,
-            'zone': 'us-east4-c',  # Try a different zone
-            'staging_location': f'{TEMP_LOCATION}/staging',
-            'temp_location': TEMP_LOCATION,
-            'input_subscription': f"projects/{PROJECT_ID}/subscriptions/{RAW_SUB}",
-            'output_table': f"{PROJECT_ID}.{DATASET_ID}.user_events"
-        },
+        project_id=PROJECT_ID,
         location=REGION,
-        wait_until_finished=False
+        body={
+            'launchParameter': {
+                'jobName': JOB_NAME,
+                'containerSpecGcsPath': f"gs://{GCS_BUCKET}/dataflow/templates/event_pipeline.json",
+                'parameters': {
+                    'input_subscription': f"projects/{PROJECT_ID}/subscriptions/{RAW_SUB}",
+                    'output_table': f"{PROJECT_ID}.{DATASET_ID}.user_events",
+                    'temp_location': f"{TEMP_LOCATION}"
+                },
+                'environment': {
+                    'numWorkers': 1,
+                    'maxWorkers': 2,
+                    'machineType': 'n1-standard-2',
+                    'workerZone': 'us-east4-c',  # Using a specific zone
+                    'network': 'default'
+                }
+            }
+        },
     )
     
     # Set dependencies
     create_raw_topic >> create_raw_subscription
     create_processed_topic >> create_processed_subscription
-    [create_raw_subscription, create_processed_subscription] >> run_simulator >> start_dataflow_pipeline
+    [create_raw_subscription, create_processed_subscription] >> check_temp_dir >> run_simulator >> start_dataflow_pipeline
