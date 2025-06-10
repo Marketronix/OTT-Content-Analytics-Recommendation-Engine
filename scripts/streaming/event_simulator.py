@@ -1,4 +1,4 @@
-# dags/scripts/event_simulator.py
+#scripts/streaming/event_simulator.py
 import argparse
 import datetime
 import json

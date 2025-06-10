@@ -1,4 +1,3 @@
-# dags/streaming/streaming_pipeline_dag.py
 from datetime import datetime, timedelta
 import os
 from airflow import DAG
@@ -85,12 +84,13 @@ with DAG(
     
     # Run event simulator (for testing)
     run_simulator = BashOperator(
-    task_id='run_event_simulator',
-    bash_command=f'python /home/airflow/gcs/data/streaming/scripts/event_simulator.py '  # CORRECT PATH
-                 f'--project_id={PROJECT_ID} --topic_name={RAW_TOPIC} --user_count=100 --events_per_user=10',
+        task_id='run_event_simulator',
+        bash_command=f'pip install google-cloud-pubsub && '
+                     f'python /home/airflow/gcs/data/streaming/scripts/event_simulator.py '
+                     f'--project_id={PROJECT_ID} --topic_name={RAW_TOPIC} --user_count=100 --events_per_user=10 --rate_limit=20',
     )
     
-    # Deploy the Dataflow pipeline
+    # Deploy the Dataflow pipeline with multiple zones
     start_dataflow_pipeline = DataflowStartFlexTemplateOperator(
         task_id='start_dataflow_pipeline',
         project_id=PROJECT_ID,
@@ -101,9 +101,17 @@ with DAG(
                 'containerSpecGcsPath': f"gs://{GCS_BUCKET}/dataflow/templates/event_pipeline.json",
                 'parameters': {
                     'input_subscription': f"projects/{PROJECT_ID}/subscriptions/{RAW_SUB}",
-                    'output_table': f"{PROJECT_ID}:{DATASET_ID}.user_events",
-                    'temp_location': TEMP_LOCATION,
+                    'output_table': f"{PROJECT_ID}.{DATASET_ID}.user_events",
+                    'temp_location': f"{TEMP_LOCATION}"
                 },
+                'environment': {
+                    'numWorkers': 2,
+                    'maxWorkers': 5,
+                    'network': 'default',
+                    'workerZone': 'us-east4-a',  # Primary zone
+                    'additionalWorkerZones': ['us-east4-b', 'us-east4-c'],  # Additional zones
+                    'serviceAccountEmail': f"github-actions-deployer@{PROJECT_ID}.iam.gserviceaccount.com"
+                }
             },
         },
     )
