@@ -62,8 +62,8 @@ jobs:
         ls -la
         echo "Files in scripts directory:"
         ls -la scripts/ || echo "Directory not found"
-        echo "Checking cloudbuild.yaml:"
-        cat cloudbuild.yaml || echo "File not found"
+        echo "Checking simplified-cloudbuild.yaml:"
+        cat simplified-cloudbuild.yaml || echo "File not found"
     
     - name: Google Auth
       id: auth
@@ -82,7 +82,7 @@ jobs:
         echo "Submitting Cloud Build job..."
         
         gcloud builds submit \
-          --config=cloudbuild.yaml \
+          --config=simplified-cloudbuild.yaml \
           --substitutions=_PROCESSED_DATA_BUCKET=${{ secrets.PROCESSED_DATA_BUCKET }} \
           . 2>&1 | tee build_output.log
         
