@@ -1,4 +1,4 @@
-# cloudbuild.yaml
+# Updated cloudbuild.yaml with proper template metadata
 steps:
   # Build the Docker image
   - name: 'gcr.io/cloud-builders/docker'
@@ -19,6 +19,27 @@ steps:
           "image": "gcr.io/${PROJECT_ID}/ott-event-pipeline:latest",
           "sdk_info": {
             "language": "PYTHON"
+          },
+          "metadata": {
+            "name": "OTT Event Processing Pipeline",
+            "description": "Process OTT streaming events from Pub/Sub to BigQuery",
+            "parameters": [
+              {
+                "name": "input_subscription",
+                "label": "Input PubSub Subscription",
+                "helpText": "PubSub subscription to read from"
+              },
+              {
+                "name": "output_table",
+                "label": "Output BigQuery Table",
+                "helpText": "BigQuery table to write to (PROJECT:DATASET.TABLE)"
+              },
+              {
+                "name": "temp_location",
+                "label": "Temp Location",
+                "helpText": "GCS location for temporary files"
+              }
+            ]
           }
         }
         EOF
@@ -33,9 +54,8 @@ steps:
       '--metadata-file', '/workspace/event_pipeline_spec.json'
     ]
 
-# Define substitution variables with defaults
 substitutions:
-  _PROCESSED_DATA_BUCKET: "default-bucket-name"  # Changed to match GitHub secret name
+  _PROCESSED_DATA_BUCKET: "default-bucket-name"
 
 images:
   - 'gcr.io/${PROJECT_ID}/ott-event-pipeline:latest'
