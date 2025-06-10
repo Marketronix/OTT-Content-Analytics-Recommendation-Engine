@@ -1,0 +1,47 @@
+# simplified-cloudbuild.yaml
+steps:
+  # Build the Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/${PROJECT_ID}/ott-event-pipeline:latest', './scripts/streaming']
+  
+  # Push the Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/${PROJECT_ID}/ott-event-pipeline:latest']
+  
+  # Write template spec file directly
+  - name: 'ubuntu'
+    entrypoint: 'bash'
+    args:
+    - '-c'
+    - |
+      echo '{
+        "image": "gcr.io/${PROJECT_ID}/ott-event-pipeline:latest",
+        "sdk_info": {"language": "PYTHON"},
+        "metadata": {
+          "name": "OTT Event Pipeline",
+          "description": "Processes streaming events",
+          "parameters": [
+            {"name": "input_subscription", "label": "Input Subscription"},
+            {"name": "output_table", "label": "Output Table"},
+            {"name": "temp_location", "label": "Temp Location"}
+          ]
+        }
+      }' > /workspace/spec.json
+      cat /workspace/spec.json
+  
+  # Create the Dataflow template
+  - name: 'gcr.io/cloud-builders/gcloud'
+    args:
+    - 'dataflow'
+    - 'flex-template'
+    - 'build'
+    - 'gs://${_PROCESSED_DATA_BUCKET}/dataflow/templates/event_pipeline.json'
+    - '--image=gcr.io/${PROJECT_ID}/ott-event-pipeline:latest'
+    - '--sdk-language=PYTHON'
+    - '--metadata-file=/workspace/spec.json'
+
+substitutions:
+  _PROCESSED_DATA_BUCKET: "ott-analytics-processed-data"
+
+images:
+  - 'gcr.io/${PROJECT_ID}/ott-event-pipeline:latest'
