@@ -90,7 +90,7 @@ with DAG(
                      f'--project_id={PROJECT_ID} --topic_name={RAW_TOPIC} --user_count=100 --events_per_user=10 --rate_limit=20',
     )
     
-    # Deploy the Dataflow pipeline with multiple zones
+    # Use pipeline parameters
     start_dataflow_pipeline = DataflowStartFlexTemplateOperator(
         task_id='start_dataflow_pipeline',
         project_id=PROJECT_ID,
@@ -102,18 +102,14 @@ with DAG(
                 'parameters': {
                     'input_subscription': f"projects/{PROJECT_ID}/subscriptions/{RAW_SUB}",
                     'output_table': f"{PROJECT_ID}.{DATASET_ID}.user_events",
-                    'temp_location': f"{TEMP_LOCATION}"
-                },
-                'environment': {
-                    'numWorkers': 2,
-                    'maxWorkers': 5,
-                    'network': 'default',
-                    'workerZone': 'us-east4-a',  # Primary zone
-                    'additionalWorkerZones': ['us-east4-b', 'us-east4-c'],  # Additional zones
-                    'serviceAccountEmail': f"github-actions-deployer@{PROJECT_ID}.iam.gserviceaccount.com"
+                    'temp_location': f"{TEMP_LOCATION}",
+                    'worker_zone': 'us-east4-c',
+                    'num_workers': '1',
+                    'max_num_workers': '3',
+                    'machine_type': 'n1-standard-2'
                 }
-            },
-        },
+            }
+        }
     )
     
     # Set dependencies
