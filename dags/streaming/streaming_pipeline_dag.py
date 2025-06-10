@@ -85,9 +85,9 @@ with DAG(
     
     # Run event simulator (for testing)
     run_simulator = BashOperator(
-        task_id='run_event_simulator',
-        bash_command=f'python /home/airflow/gcs/dags/streaming/scripts/event_simulator.py '
-                     f'--project_id={PROJECT_ID} --topic_name={RAW_TOPIC} --user_count=100 --events_per_user=10',
+    task_id='run_event_simulator',
+    bash_command=f'python /home/airflow/gcs/data/streaming/scripts/event_simulator.py '  # CORRECT PATH
+                 f'--project_id={PROJECT_ID} --topic_name={RAW_TOPIC} --user_count=100 --events_per_user=10',
     )
     
     # Deploy the Dataflow pipeline
@@ -100,7 +100,7 @@ with DAG(
                 'jobName': JOB_NAME,
                 'containerSpecGcsPath': f"gs://{GCS_BUCKET}/dataflow/templates/event_pipeline.json",
                 'parameters': {
-                    'input_subscription': RAW_SUB,
+                    'input_subscription': f"projects/{PROJECT_ID}/subscriptions/{RAW_SUB}",
                     'output_table': f"{PROJECT_ID}:{DATASET_ID}.user_events",
                     'temp_location': TEMP_LOCATION,
                 },
