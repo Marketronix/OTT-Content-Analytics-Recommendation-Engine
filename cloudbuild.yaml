@@ -1,50 +1,61 @@
-# Updated cloudbuild.yaml with proper template metadata
 steps:
-  # Build the Docker image
+  # Step 1: Build the Docker image
   - name: 'gcr.io/cloud-builders/docker'
     args: ['build', '-t', 'gcr.io/${PROJECT_ID}/ott-event-pipeline:latest', './scripts/streaming']
-  
-  # Push the Docker image
+
+  # Step 2: Push the Docker image
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'gcr.io/${PROJECT_ID}/ott-event-pipeline:latest']
-  
-  # Create the template spec file
+
+  # Step 3: Create the template spec JSON
   - name: 'gcr.io/cloud-builders/gcloud'
     entrypoint: '/bin/bash'
     args:
       - '-c'
       - |
-        cat > /workspace/event_pipeline_spec.json << EOF
+        cat > /workspace/event_pipeline_spec.json <<EOF
         {
           "image": "gcr.io/${PROJECT_ID}/ott-event-pipeline:latest",
-          "sdk_info": {
+          "sdkInfo": {
             "language": "PYTHON"
           },
           "metadata": {
-            "name": "OTT Event Processing Pipeline",
+            "name": "OTT Event Pipeline",
             "description": "Process OTT streaming events from Pub/Sub to BigQuery",
             "parameters": [
               {
                 "name": "input_subscription",
-                "label": "Input PubSub Subscription",
-                "helpText": "PubSub subscription to read from"
+                "label": "Input Subscription",
+                "helpText": "Full Pub/Sub subscription path, e.g. projects/your-project-id/subscriptions/your-subscription",
+                "paramType": "TEXT",
+                "isOptional": false
               },
               {
                 "name": "output_table",
-                "label": "Output BigQuery Table",
-                "helpText": "BigQuery table to write to (PROJECT:DATASET.TABLE)"
+                "label": "Output Table",
+                "helpText": "BigQuery table to write events to, in format: project_id.dataset.table",
+                "paramType": "TEXT",
+                "isOptional": false
               },
               {
                 "name": "temp_location",
                 "label": "Temp Location",
-                "helpText": "GCS location for temporary files"
+                "helpText": "GCS location for temporary files, e.g. gs://your-bucket/temp",
+                "paramType": "TEXT",
+                "isOptional": false
               }
             ]
+          },
+          "defaultEnvironment": {
+            "numWorkers": 1,
+            "maxWorkers": 2,
+            "machineType": "n1-standard-2",
+            "workerZone": "us-east4-c"
           }
         }
         EOF
-  
-  # Create the Dataflow Flex Template
+
+  # Step 4: Build the Flex Template using the generated metadata
   - name: 'gcr.io/cloud-builders/gcloud'
     args: [
       'dataflow', 'flex-template', 'build',
@@ -55,7 +66,7 @@ steps:
     ]
 
 substitutions:
-  _PROCESSED_DATA_BUCKET: "default-bucket-name"
+  _PROCESSED_DATA_BUCKET: "ott-analytics-processed-data"
 
 images:
   - 'gcr.io/${PROJECT_ID}/ott-event-pipeline:latest'
