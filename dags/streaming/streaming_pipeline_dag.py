@@ -116,6 +116,8 @@ with DAG(
     )
     
     # Set dependencies
-    create_raw_topic >> create_raw_subscription
-    create_processed_topic >> create_processed_subscription
-    [create_raw_subscription, create_processed_subscription] >> run_simulator >> start_dataflow_pipeline
+    create_raw_topic >> create_raw_subscription; create_processed_topic >> create_processed_subscription; [create_raw_subscription, create_processed_subscription] >> run_simulator >> start_dataflow_pipeline
+
+    # create_raw_topic >> create_raw_subscription
+    # create_processed_topic >> create_processed_subscription
+    # [create_raw_subscription, create_processed_subscription] >> run_simulator >> start_dataflow_pipeline
