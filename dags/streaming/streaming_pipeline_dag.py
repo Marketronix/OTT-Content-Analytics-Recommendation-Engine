@@ -109,7 +109,7 @@ with DAG(
                     'numWorkers': 1,
                     'maxWorkers': 2,
                     'machineType': 'n1-standard-2',
-                    'workerZone': 'us-east4-c'
+                    'workerZone': 'us-east4'
                 }
             }
         },
