@@ -1,10 +1,10 @@
-name: Deploy DAGs and Streaming Pipeline
+name: Deploy DAGs to Cloud Composer
 
 on:
   push:
-    branches: 
-      - main
-  workflow_dispatch:  # Allow manual triggering
+    branches: [ main ]
+    paths:
+      - 'dags/**'
 
 jobs:
   deploy-dags:
@@ -28,7 +28,6 @@ jobs:
         echo "RAW_DATA_BUCKET=${{ secrets.RAW_DATA_BUCKET }}" >> .env
         echo "PROCESSED_DATA_BUCKET=${{ secrets.PROCESSED_DATA_BUCKET }}" >> .env
         echo "ARCHIVE_DATA_BUCKET=${{ secrets.ARCHIVE_DATA_BUCKET }}" >> .env
-        echo "IMDB_DATASETS=${{ secrets.IMDB_DATASETS }}" >> .env
         echo "BIGQUERY_DATASET=${{ secrets.BIGQUERY_DATASET }}" >> .env
         echo "GCP_REGION=${{ secrets.GCP_REGION }}" >> .env
     
@@ -44,53 +43,3 @@ jobs:
         GCP_COMPOSER_BUCKET: ${{ secrets.GCP_COMPOSER_BUCKET }}
       run: |
         python scripts/deploy_dags_to_composer.py
-
-  deploy-dataflow:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
-    
-    - name: Debug Information
-      run: |
-        echo "Current directory: $(pwd)"
-        echo "Files in current directory:"
-        ls -la
-        echo "Files in scripts directory:"
-        ls -la scripts/ || echo "Directory not found"
-        echo "Checking cloudbuild.yaml:"
-        cat cloudbuild.yaml || echo "File not found"
-    
-    - name: Google Auth
-      id: auth
-      uses: google-github-actions/auth@v1
-      with:
-        credentials_json: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}
-    
-    - name: Set up Cloud SDK
-      uses: google-github-actions/setup-gcloud@v1
-    
-    - name: Authenticate Docker to GCR
-      run: gcloud auth configure-docker --quiet
-    
-    - name: Submit Cloud Build
-      run: |
-        echo "Submitting Cloud Build job..."
-        
-        gcloud builds submit \
-          --config=cloudbuild.yaml \
-          --substitutions=_PROCESSED_DATA_BUCKET=${{ secrets.PROCESSED_DATA_BUCKET }} \
-          . 2>&1 | tee build_output.log
-        
-        # Check if the build was successful
-        if [ $? -ne 0 ]; then
-          echo "Cloud Build failed. See build_output.log for details."
-          cat build_output.log
-          exit 1
-        fi
-        
-        echo "Cloud Build completed successfully!"

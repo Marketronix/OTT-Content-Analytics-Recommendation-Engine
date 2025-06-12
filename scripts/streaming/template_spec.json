@@ -1,39 +1,28 @@
 {
-    "image": "gcr.io/ott-analytics-engine/ott-event-pipeline:latest",
-    "sdkInfo": {
-      "language": "PYTHON"
-    },
-    "metadata": {
-      "name": "OTT Event Pipeline",
-      "description": "Process OTT streaming events from Pub/Sub to BigQuery",
-      "parameters": [
-        {
-          "name": "input_subscription",
-          "label": "Input Subscription",
-          "helpText": "Full Pub/Sub subscription path, e.g. projects/your-project-id/subscriptions/your-subscription",
-          "paramType": "TEXT",
-          "isOptional": false
-        },
-        {
-          "name": "output_table",
-          "label": "Output Table",
-          "helpText": "BigQuery table to write events to, in format: project_id.dataset.table",
-          "paramType": "TEXT",
-          "isOptional": false
-        },
-        {
-          "name": "temp_location",
-          "label": "Temp Location",
-          "helpText": "GCS location for temporary files, e.g. gs://your-bucket/temp",
-          "paramType": "TEXT",
-          "isOptional": false
-        }
-      ]
-    },
-    "defaultEnvironment": {
-      "numWorkers": 1,
-      "maxWorkers": 2,
-      "machineType": "n1-standard-2",
-      "workerZone": "us-east4-c"
-    }
+    "name": "OTT Event Pipeline",
+    "description": "Process OTT streaming events from Pub/Sub to BigQuery",
+    "parameters": [
+      {
+        "name": "input_subscription",
+        "label": "Input Subscription",
+        "helpText": "Full Pub/Sub subscription path, e.g. projects/your-project-id/subscriptions/your-subscription",
+        "paramType": "TEXT",
+        "isOptional": false
+      },
+      {
+        "name": "output_table",
+        "label": "Output Table",
+        "helpText": "BigQuery table to write events to, in format: project_id.dataset.table",
+        "paramType": "TEXT",
+        "isOptional": false
+      },
+      {
+        "name": "temp_location",
+        "label": "Temp Location",
+        "helpText": "GCS location for temporary files, e.g. gs://your-bucket/temp",
+        "paramType": "TEXT",
+        "isOptional": false
+      }
+    ]
   }
+  
