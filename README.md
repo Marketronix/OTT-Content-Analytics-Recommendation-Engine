@@ -7,6 +7,17 @@
 </head>
 <body>
   <h1>OTT Content Analytics Pipeline</h1>
+  [![GCS](https://img.shields.io/badge/Storage-Google%20Cloud%20Storage-4285F4)](https://cloud.google.com/storage/docs)
+  [![BigQuery](https://img.shields.io/badge/Warehousing-Google%20BigQuery-34A853)](https://cloud.google.com/bigquery/docs)
+  [![Composer](https://img.shields.io/badge/Orchestration-Google%20Cloud%20Composer-FF6D01)](https://cloud.google.com/composer/docs)
+  [![Dataproc](https://img.shields.io/badge/Compute-Google%20Dataproc-DB4437)](https://cloud.google.com/dataproc/docs)
+  [![Dataflow](https://img.shields.io/badge/Stream%20Processing-Google%20Dataflow-0F9D58)](https://cloud.google.com/dataflow/docs)
+  [![Pub/Sub](https://img.shields.io/badge/Messaging-Google%20Pub/Sub-AB47BC)](https://cloud.google.com/pubsub/docs)
+  [![Airflow](https://img.shields.io/badge/Workflow-Apache%20Airflow-017CEE)](https://airflow.apache.org/docs/)
+  [![Beam](https://img.shields.io/badge/Unified%20Model-Apache%20Beam-F9A825)](https://beam.apache.org/documentation/)
+  [![Spark](https://img.shields.io/badge/Big%20Data-Apache%20Spark-E25A1C)](https://spark.apache.org/docs/latest/)
+  [![GitHub Actions](https://img.shields.io/badge/CI/CD-GitHub%20Actions-24292F)](https://docs.github.com/en/actions)
+
   <p>A comprehensive data pipeline for OTT platform analytics leveraging Google Cloud Platform services for both batch and streaming data processing.</p>
 
   <h2>Overview</h2>
