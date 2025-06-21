@@ -37,7 +37,7 @@
     <li><strong>Analytics:</strong> SQL views and data quality metrics</li>
   </ul>
 
-  <h2>What I've Done</h2>
+  <h2>What We've Done</h2>
   <h3>Phase 0: Project Setup & Resource Initialization ✅</h3>
   <ul>
     <li>Created GCP project with required API services</li>
@@ -72,6 +72,23 @@
     <li>Created Docker-based Flex Template for Dataflow</li>
     <li>Implemented event simulator for testing</li>
   </ul>
+
+  <h3>Phase 5: Dashboarding with Power BI ✅</h3>
+  <ul>
+    <li>Built interactive dashboards for movies, TV series, and KPIs</li>
+    <li>Designed an executive overview dashboard with key visual insights</li>
+  </ul>
+
+  <h2>Dashboards</h2>
+  <h3>Overview Dashboard</h3>
+
+  🎥 [Click here to watch the demo video](./screenshots/Overview_Dashboard.mp4)
+  <h3>KPI Dashboard</h3>
+  <img src= "./screenshots/KPI_Dashboard.png">
+  <h3>Movies Dashboard</h3>
+  <img src= "./screenshots/Movies_Dashboard.png">
+  <h3>TV Series Dashboard</h3>
+  <img src= "./screenshots/TVseries_Dashboard.png">
 
   <h2>Tech Stack & Services</h2>
   <ul>
